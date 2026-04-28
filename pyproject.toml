@@ -1,0 +1,28 @@
+[project]
+name = "preemptirq-benchmark"
+version = "0.1.0"
+description = "Benchmark suite for Linux kernel preemptirq tracepoint overhead"
+readme = "README.md"
+authors = [
+    { name = "Wander Lairson Costa", email = "wander@redhat.com" }
+]
+requires-python = ">=3.10"
+license = "GPL-2.0-only"
+dependencies = [
+    "rich>=13.0",
+    "scipy>=1.10",
+]
+
+[project.scripts]
+preemptirq-benchmark = "preemptirq_benchmark.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1",
+    "ruff>=0.8",
+    "black>=24.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.6,<0.12.0"]
+build-backend = "uv_build"

@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+wheels/
+*.whl
+.venv/
+venv/
+env/
+.eggs/
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# uv / pyenv
+uv.lock
+.python-version
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# Gemini CLI
+.gemini/
+GEMINI.md
+
+# Cursor
+.cursor/
+.cursorignore
+.cursorindexingignore
+
+# Gravity
+.gravity/
+
+# Copilot
+.copilot/
+
+# Aider
+.aider*
+
+# Cline
+.cline/
+
+# Continue
+.continue/
+
+# Windsurf
+.windsurf/
+
+# MCP
+.mcp.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# runtime produced files
+*.json
