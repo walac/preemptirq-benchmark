@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import subprocess
 import sys
+from pathlib import Path
 
 from preemptirq_benchmark.benchmarks import (
     BenchmarkResult,
@@ -22,6 +24,28 @@ from preemptirq_benchmark.report import (
 )
 
 FORMAT_CHOICES = ["ascii", "txt", "markdown", "json"]
+
+EXT_TO_FORMAT: dict[str, str] = {
+    ".ascii": "ascii",
+    ".txt": "txt",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".json": "json",
+}
+
+
+def infer_format(output: str) -> str:
+    """Infer output format from a file extension.
+
+    Args:
+        output: Output file path.
+
+    Returns:
+        A format string from FORMAT_CHOICES, or "ascii" if the
+        extension is not recognized.
+    """
+    ext = Path(output).suffix.lower()
+    return EXT_TO_FORMAT.get(ext, "ascii")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -90,6 +114,7 @@ def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         help="Kernel source tree for kernel-compile benchmark",
     )
     run.add_argument(
+        "-o",
         "--output",
         type=str,
         default=None,
@@ -117,9 +142,16 @@ def add_show_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ig
     show.add_argument(
         "--format",
         choices=FORMAT_CHOICES,
-        default="ascii",
+        default=None,
         dest="fmt",
-        help="Output format (default: ascii)",
+        help="Output format (default: ascii, or inferred from -o extension)",
+    )
+    show.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="Write output to file (format inferred from extension if --format not given)",
     )
 
 
@@ -134,9 +166,16 @@ def add_compare_parser(subparsers: argparse._SubParsersAction) -> None:  # type:
     cmp.add_argument(
         "--format",
         choices=FORMAT_CHOICES,
-        default="ascii",
+        default=None,
         dest="fmt",
-        help="Output format (default: ascii)",
+        help="Output format (default: ascii, or inferred from -o extension)",
+    )
+    cmp.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default=None,
+        help="Write output to file (format inferred from extension if --format not given)",
     )
 
 
@@ -248,14 +287,43 @@ def cmd_run(args: argparse.Namespace) -> None:
     display_report(report, "ascii")
 
 
+def resolve_output_format(args: argparse.Namespace) -> str:
+    """Resolve the output format from --format and -o flags.
+
+    Precedence: --format flag wins; otherwise infer from -o file
+    extension; otherwise fall back to "ascii".
+
+    Args:
+        args: Parsed arguments with ``fmt`` and ``output`` attributes.
+
+    Returns:
+        A format string from FORMAT_CHOICES.
+    """
+    if args.fmt is not None:
+        return args.fmt
+    if args.output is not None:
+        return infer_format(args.output)
+    return "ascii"
+
+
 def cmd_show(args: argparse.Namespace) -> None:
     """Execute the 'show' subcommand.
 
     Args:
         args: Parsed arguments from argparse.
     """
+    fmt = resolve_output_format(args)
     report = load_report(args.report)
-    display_report(report, args.fmt)
+    if args.output:
+        try:
+            with open(args.output, "w") as f, contextlib.redirect_stdout(f):
+                display_report(report, fmt)
+        except OSError as e:
+            print(f"Error: cannot write to {args.output}: {e}", file=sys.stderr)
+            raise SystemExit(1) from e
+        print(f"Output written to: {args.output}")
+    else:
+        display_report(report, fmt)
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
@@ -264,7 +332,17 @@ def cmd_compare(args: argparse.Namespace) -> None:
     Args:
         args: Parsed arguments from argparse.
     """
-    compare_reports(args.reports, args.fmt)
+    fmt = resolve_output_format(args)
+    if args.output:
+        try:
+            with open(args.output, "w") as f, contextlib.redirect_stdout(f):
+                compare_reports(args.reports, fmt)
+        except OSError as e:
+            print(f"Error: cannot write to {args.output}: {e}", file=sys.stderr)
+            raise SystemExit(1) from e
+        print(f"Output written to: {args.output}")
+    else:
+        compare_reports(args.reports, fmt)
 
 
 def print_progress(
