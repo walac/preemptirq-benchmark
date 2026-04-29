@@ -306,6 +306,25 @@ def resolve_output_format(args: argparse.Namespace) -> str:
     return "ascii"
 
 
+@contextlib.contextmanager
+def managed_output(output_path: str | None):
+    """Context manager for file output redirection.
+
+    Args:
+        output_path: Path to the output file. If None, yields without redirection.
+    """
+    if output_path:
+        try:
+            with open(output_path, "w", encoding="utf-8") as f, contextlib.redirect_stdout(f):
+                yield
+        except OSError as e:
+            print(f"Error: cannot write to {output_path}: {e}", file=sys.stderr)
+            raise SystemExit(1) from e
+        print(f"Output written to: {output_path}")
+    else:
+        yield
+
+
 def cmd_show(args: argparse.Namespace) -> None:
     """Execute the 'show' subcommand.
 
@@ -314,15 +333,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     """
     fmt = resolve_output_format(args)
     report = load_report(args.report)
-    if args.output:
-        try:
-            with open(args.output, "w") as f, contextlib.redirect_stdout(f):
-                display_report(report, fmt)
-        except OSError as e:
-            print(f"Error: cannot write to {args.output}: {e}", file=sys.stderr)
-            raise SystemExit(1) from e
-        print(f"Output written to: {args.output}")
-    else:
+    with managed_output(args.output):
         display_report(report, fmt)
 
 
@@ -333,15 +344,7 @@ def cmd_compare(args: argparse.Namespace) -> None:
         args: Parsed arguments from argparse.
     """
     fmt = resolve_output_format(args)
-    if args.output:
-        try:
-            with open(args.output, "w") as f, contextlib.redirect_stdout(f):
-                compare_reports(args.reports, fmt)
-        except OSError as e:
-            print(f"Error: cannot write to {args.output}: {e}", file=sys.stderr)
-            raise SystemExit(1) from e
-        print(f"Output written to: {args.output}")
-    else:
+    with managed_output(args.output):
         compare_reports(args.reports, fmt)
 
 
