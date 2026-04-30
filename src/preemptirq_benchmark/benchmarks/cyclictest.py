@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import tempfile
+from pathlib import Path
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 
@@ -31,28 +33,35 @@ class CyclictestBenchmark(BenchmarkBase):
             Dict with min_latency_us, avg_latency_us, and
             max_latency_us (worst across all CPUs).
         """
-        proc = subprocess.run(
-            [
-                "cyclictest",
-                "-m",
-                "-S",
-                "-p",
-                "98",
-                "-i",
-                "1000",
-                "-l",
-                "100000",
-                "-q",
-                "--json",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            json_path = tmp.name
+
         try:
-            data = json.loads(proc.stdout)
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"cannot parse cyclictest JSON output: {proc.stdout[:200]}") from e
+            subprocess.run(
+                [
+                    "cyclictest",
+                    "-m",
+                    "-S",
+                    "-p",
+                    "98",
+                    "-i",
+                    "1000",
+                    "-l",
+                    "100000",
+                    "-q",
+                    f"--json={json_path}",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            try:
+                raw = Path(json_path).read_text(encoding="utf-8")
+                data = json.loads(raw)
+            except (json.JSONDecodeError, OSError) as e:
+                raise RuntimeError(f"cannot parse cyclictest JSON output: {e}") from e
+        finally:
+            Path(json_path).unlink(missing_ok=True)
 
         min_lat = float("inf")
         avg_total = 0.0
@@ -66,9 +75,7 @@ class CyclictestBenchmark(BenchmarkBase):
                 max_lat = max(max_lat, thread["max"])
                 n_threads += 1
             except KeyError as e:
-                raise RuntimeError(
-                    f"cyclictest JSON thread data missing keys: {e}. Output: {proc.stdout[:200]}"
-                ) from e
+                raise RuntimeError(f"cyclictest JSON thread data missing keys: {e}") from e
 
         if n_threads == 0:
             raise RuntimeError("cyclictest returned no thread data")
