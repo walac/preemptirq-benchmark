@@ -189,20 +189,6 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     names = resolve_benchmarks(args.include, args.exclude, args.all_flag)
 
-    if "kernel-compile" in names and args.kernel_src is None:
-        if args.include and "kernel-compile" in [b.strip() for b in args.include.split(",")]:
-            print(
-                "Error: --kernel-src is required when kernel-compile is included",
-                file=sys.stderr,
-            )
-            raise SystemExit(1)
-        else:
-            names.remove("kernel-compile")
-            print(
-                "Warning: Skipping kernel-compile because --kernel-src was not provided",
-                file=sys.stderr,
-            )
-
     benchmarks = []
     for name in names:
         bench = get_benchmark(name)

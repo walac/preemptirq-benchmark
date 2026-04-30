@@ -15,7 +15,7 @@ from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 class KernelCompileBenchmark(BenchmarkBase):
     """Kernel build throughput benchmark using make -j$(nproc).
 
-    Each iteration runs ``make clean``, ``make defconfig``, and
+    Each iteration runs ``make defconfig``, ``make clean``, and
     ``make -j$(nproc)`` on the kernel source tree specified via
     ``--kernel-src``.
     """
@@ -38,17 +38,21 @@ class KernelCompileBenchmark(BenchmarkBase):
             self.kernel_src = Path(str(src))
 
     def check_prerequisites(self) -> tuple[bool, str]:
-        """Check that a kernel source directory is configured and valid.
+        """Check that build tools and a kernel source directory are available.
 
         Returns:
-            (True, "") if the Makefile exists at the configured path,
-            or (False, error message) otherwise.
+            (True, "") if all prerequisites are met, or
+            (False, error message) otherwise.
         """
         if self.kernel_src is None:
             return False, "--kernel-src is required for kernel-compile"
         makefile = self.kernel_src / "Makefile"
         if not makefile.exists():
             return False, f"no Makefile found in {self.kernel_src}"
+        if not shutil.which("make"):
+            return False, "make not found (install: dnf install make)"
+        if not shutil.which("gcc"):
+            return False, "gcc not found (install: dnf install gcc)"
         if not shutil.which("time") and not Path("/usr/bin/time").exists():
             return False, "/usr/bin/time not found (install: dnf install time)"
         return True, ""
@@ -56,37 +60,37 @@ class KernelCompileBenchmark(BenchmarkBase):
     def run_once(self) -> dict[str, float]:
         """Run a single kernel build iteration.
 
-        Runs ``make clean``, ``make defconfig``, then
+        Runs ``make defconfig``, ``make clean``, then
         ``make -j$(nproc)`` and measures wall, user, and system time.
 
         Returns:
             Dict with wall_time_seconds, user_time_seconds, and
             sys_time_seconds.
+
+        Raises:
+            RuntimeError: If any make command fails or time output
+                cannot be parsed.
         """
         if self.kernel_src is None:
             raise RuntimeError("kernel_src not configured; call configure() first")
         nproc = os.cpu_count() or 1
         src = str(self.kernel_src)
 
-        subprocess.run(
-            ["make", "-C", src, "clean"],
-            capture_output=True,
-            check=True,
-        )
-        subprocess.run(
-            ["make", "-C", src, "defconfig"],
-            capture_output=True,
-            check=True,
-        )
+        self._run_make(src, "defconfig")
+        self._run_make(src, "clean")
 
         start = time.monotonic()
         proc = subprocess.run(
             ["/usr/bin/time", "-v", "make", "-C", src, f"-j{nproc}"],
             capture_output=True,
             text=True,
-            check=True,
         )
         wall = time.monotonic() - start
+
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"make -j{nproc} failed (exit {proc.returncode}): {proc.stderr[:500]}"
+            )
 
         user_match = re.search(
             r"User time(?:\s*\(seconds\))?:\s*([\d.]+)", proc.stderr, re.IGNORECASE
@@ -107,10 +111,31 @@ class KernelCompileBenchmark(BenchmarkBase):
             "sys_time_seconds": sys_,
         }
 
+    @staticmethod
+    def _run_make(src: str, target: str) -> None:
+        """Run a make target and raise on failure.
+
+        Args:
+            src: Path to the kernel source tree.
+            target: Make target to execute.
+
+        Raises:
+            RuntimeError: If the make command fails.
+        """
+        proc = subprocess.run(
+            ["make", "-C", src, target],
+            capture_output=True,
+            text=True,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(
+                f"make {target} failed (exit {proc.returncode}): {proc.stderr[:500]}"
+            )
+
     def get_command(self) -> list[str] | None:
         """Return the full build command for perf stat wrapping.
 
-        Includes clean, defconfig, and build steps so that perf stat
+        Includes defconfig, clean, and build steps so that perf stat
         captures a representative compilation rather than a no-op
         against an already-built tree.
 
@@ -125,7 +150,7 @@ class KernelCompileBenchmark(BenchmarkBase):
         return [
             "sh",
             "-c",
-            f"make -C {src} clean && make -C {src} defconfig && make -C {src} -j{nproc}",
+            f"make -C {src} defconfig && make -C {src} clean && make -C {src} -j{nproc}",
         ]
 
     def get_units(self) -> dict[str, str]:
