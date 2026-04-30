@@ -22,10 +22,11 @@ significance testing.
 ## Requirements
 
 - Python >= 3.10
+- [uv](https://github.com/astral-sh/uv) package manager
 - Linux with the benchmark tools installed (see below)
 - Root access for benchmarks that require it (fio, cyclictest, rtla, tracerbench,
   perf stat)
-- The `tracerbench` kernel module for the tracerbench benchmark
+- The [`tracerbench`](https://github.com/walac/tracer-benchmark/) kernel module for the tracerbench benchmark
 - A configured kernel source tree for the kernel-compile benchmark
 
 ### RPM packages (Fedora/RHEL)
@@ -88,8 +89,10 @@ sudo uv run preemptirq-benchmark run --include=tracerbench \
     --samples 50000 --highest 250 --percentile 99
 ```
 
-The `run` subcommand always saves a JSON report and prints an ascii summary
-to the terminal. Use `show` to re-display in a different format.
+The `run` subcommand saves a JSON report to the current directory
+(e.g., `preemptirq-benchmark-6.14.0-{timestamp}.json`) and prints an
+ASCII summary to the terminal. Use `-o` to specify a custom report path.
+Use `show` to re-display in a different format.
 
 ### Show a saved report
 
@@ -97,6 +100,7 @@ to the terminal. Use `show` to re-display in a different format.
 uv run preemptirq-benchmark show report.json
 uv run preemptirq-benchmark show report.json --format markdown
 uv run preemptirq-benchmark show report.json --format txt
+uv run preemptirq-benchmark show report.json -o summary.md
 ```
 
 ### Compare reports
@@ -107,6 +111,7 @@ with Mann-Whitney U significance testing.
 ```bash
 uv run preemptirq-benchmark compare baseline.json patched.json
 uv run preemptirq-benchmark compare baseline.json v1.json v2.json --format markdown
+uv run preemptirq-benchmark compare baseline.json patched.json -o comparison.txt
 ```
 
 Comparison output shows:
@@ -118,6 +123,11 @@ Comparison output shows:
 ## Output formats (show and compare)
 
 The `--format` option is available on the `show` and `compare` subcommands.
+
+Use `-o`/`--output` to write the output directly to a file. The format
+is automatically inferred from the file extension (`.txt`, `.md`,
+`.markdown`, `.json`, `.ascii`). If `--format` is explicitly provided,
+it overrides the extension inference.
 
 | Format | Description |
 |--------|-------------|
@@ -139,14 +149,6 @@ Comparisons include:
 
 - **Delta %** -- percentage change from baseline
 - **Mann-Whitney U** -- non-parametric significance test
-
-## Report files
-
-Reports are saved as JSON with auto-generated filenames:
-
-```
-preemptirq-benchmark-{kernel_version}-{YYYYMMDD-HHMMSS}.json
-```
 
 ## Benchmark selection rules
 
