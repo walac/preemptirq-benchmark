@@ -51,7 +51,7 @@ def compare_reports(
     for r in reports[1:]:
         all_benchmarks |= set(r.get("benchmarks_run", []))
 
-    for bench_name in sorted(list(all_benchmarks)):
+    for bench_name in sorted(all_benchmarks):
 
         desc = BENCHMARK_DESCRIPTIONS.get(bench_name, "")
         title = f"{bench_name} ({desc})"
@@ -65,7 +65,7 @@ def compare_reports(
         for r in reports[1:]:
             all_metrics |= set(r.get("results", {}).get(bench_name, {}).get("metrics", {}).keys())
 
-        for metric_name in sorted(list(all_metrics)):
+        for metric_name in sorted(all_metrics):
             row = [metric_name]
 
             base_mdata = base_metrics.get(metric_name)
@@ -107,7 +107,7 @@ def compare_reports(
             )
 
         if all_perf:
-            for cname in sorted(list(all_perf)):
+            for cname in sorted(all_perf):
                 row = [f"perf:{cname}"]
                 base_cdata = base_perf.get(cname)
 
