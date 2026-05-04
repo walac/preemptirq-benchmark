@@ -114,6 +114,12 @@ def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         help="Kernel source tree for kernel-compile benchmark",
     )
     run.add_argument(
+        "--bpf-bench",
+        type=str,
+        default=None,
+        help="Path to BPF bench binary (default: 'bench' from $PATH)",
+    )
+    run.add_argument(
         "-o",
         "--output",
         type=str,
@@ -194,6 +200,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         bench = get_benchmark(name)
         bench.configure(
             kernel_src=args.kernel_src,
+            bpf_bench=args.bpf_bench,
             nr_samples=args.samples,
             nr_highest=args.highest,
             percentile=args.percentile,

@@ -14,6 +14,12 @@ ALL_BENCHMARK_NAMES = [
     "kernel-compile",
     "rtla",
     "tracerbench",
+    "bpf-fentry",
+    "bpf-tp",
+    "bpf-kprobe",
+    "bpf-local-storage",
+    "bpf-hashmap",
+    "bpf-kernel-count",
 ]
 
 BENCHMARK_DESCRIPTIONS = {
@@ -26,6 +32,12 @@ BENCHMARK_DESCRIPTIONS = {
     "kernel-compile": "Kernel build throughput (make -j)",
     "rtla": "RT latency (timerlat + osnoise)",
     "tracerbench": "Kernel module micro-benchmark (CPU cycles)",
+    "bpf-fentry": "BPF fentry trampoline overhead",
+    "bpf-tp": "BPF tracepoint overhead",
+    "bpf-kprobe": "BPF kprobe overhead",
+    "bpf-local-storage": "BPF local storage (irq save/restore)",
+    "bpf-hashmap": "BPF hashmap update (spin lock)",
+    "bpf-kernel-count": "BPF in-kernel counting (baseline)",
 }
 
 
@@ -258,6 +270,7 @@ def import_all() -> None:
     :func:`register`-decorated classes are loaded.
     """
     from preemptirq_benchmark.benchmarks import (  # noqa: F401
+        bpf_bench,
         cyclictest,
         fio,
         hackbench,
