@@ -25,9 +25,24 @@ class FioBenchmark(BenchmarkBase):
         """
         if not shutil.which("fio"):
             return False, "fio not found (install: dnf install fio)"
-        if not NULLB_DEV.exists():
-            return False, ("/dev/nullb0 not available " "(run: modprobe null_blk irqmode=1)")
-        return True, ""
+
+        if NULLB_DEV.exists():
+            return True, ""
+
+        result = subprocess.run(
+            ["modprobe", "null_blk", "irqmode=1"],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0 and NULLB_DEV.exists():
+            return True, ""
+
+        return False, (
+            "/dev/nullb0 not available: "
+            f"({result.stderr.strip()}). "
+            "Load manually: modprobe null_blk irqmode=1"
+        )
 
     def run_once(self) -> dict[str, float]:
         """Run a single fio iteration with JSON output.
@@ -40,19 +55,7 @@ class FioBenchmark(BenchmarkBase):
             RuntimeError: If fio JSON output cannot be parsed.
         """
         proc = subprocess.run(
-            [
-                "fio",
-                "--name=nullblk",
-                "--ioengine=io_uring",
-                f"--filename={NULLB_DEV}",
-                "--direct=1",
-                "--bs=4k",
-                "--iodepth=64",
-                "--rw=randread",
-                "--runtime=30",
-                "--time_based",
-                "--output-format=json",
-            ],
+            self.get_command(),
             capture_output=True,
             text=True,
             check=True,
@@ -91,6 +94,7 @@ class FioBenchmark(BenchmarkBase):
             "--rw=randread",
             "--runtime=30",
             "--time_based",
+            "--size=16384",
             "--output-format=json",
         ]
 

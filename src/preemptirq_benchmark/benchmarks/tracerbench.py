@@ -8,7 +8,7 @@ from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 DEBUGFS_BASE = Path("/sys/kernel/debug/tracerbench")
 
 TEST_TYPES = ["irq", "preempt", "irq_save"]
-STAT_NAMES = ["median", "average", "max_avg", "percentile"]
+STAT_NAMES = ["median", "average", "max", "percentile"]
 
 
 @register
@@ -107,7 +107,7 @@ class TracerbenchBenchmark(BenchmarkBase):
                     value = int(path.read_text().strip())
                 except (FileNotFoundError, PermissionError, ValueError) as e:
                     raise RuntimeError(f"cannot read tracerbench metric {path}: {e}") from e
-                metrics[f"{test_type}_{stat_name}"] = float(value)
+                metrics[f"{test_type}/{stat_name}"] = float(value)
         return metrics
 
     def get_units(self) -> dict[str, str]:
@@ -119,5 +119,5 @@ class TracerbenchBenchmark(BenchmarkBase):
         units: dict[str, str] = {}
         for test_type in TEST_TYPES:
             for stat_name in STAT_NAMES:
-                units[f"{test_type}_{stat_name}"] = "ns"
+                units[f"{test_type}/{stat_name}"] = "ns"
         return units

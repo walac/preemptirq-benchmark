@@ -34,7 +34,7 @@ class HackbenchBenchmark(BenchmarkBase):
             RuntimeError: If the output cannot be parsed.
         """
         proc = subprocess.run(
-            ["hackbench", "-s", "4096", "-l", "1000", "-g", "16", "-f", "20", "-P"],
+            self.get_command(),
             capture_output=True,
             text=True,
             check=True,

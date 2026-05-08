@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import re
-import shlex
 import shutil
 import subprocess
 import time
@@ -33,9 +32,8 @@ class KernelCompileBenchmark(BenchmarkBase):
             kwargs: Must include "kernel_src" as a string or Path
                 when this benchmark is selected.
         """
-        src = kwargs.get("kernel_src")
-        if src is not None:
-            self.kernel_src = Path(str(src))
+        src = kwargs["kernel_src"]
+        self.kernel_src = Path(str(src))
 
     def check_prerequisites(self) -> tuple[bool, str]:
         """Check that build tools and a kernel source directory are available.
@@ -53,8 +51,8 @@ class KernelCompileBenchmark(BenchmarkBase):
             return False, "make not found (install: dnf install make)"
         if not shutil.which("gcc"):
             return False, "gcc not found (install: dnf install gcc)"
-        if not shutil.which("time") and not Path("/usr/bin/time").exists():
-            return False, "/usr/bin/time not found (install: dnf install time)"
+        if not shutil.which("time"):
+            return False, "time command not found (install: dnf install time)"
         return True, ""
 
     def run_once(self) -> dict[str, float]:
@@ -74,14 +72,13 @@ class KernelCompileBenchmark(BenchmarkBase):
         if self.kernel_src is None:
             raise RuntimeError("kernel_src not configured; call configure() first")
         nproc = os.cpu_count() or 1
-        src = str(self.kernel_src)
 
-        self._run_make(src, "defconfig")
-        self._run_make(src, "clean")
+        self.run_make("defconfig")
+        self.run_make("clean")
 
         start = time.monotonic()
         proc = subprocess.run(
-            ["/usr/bin/time", "-v", "make", "-C", src, f"-j{nproc}"],
+            self.get_command(),
             capture_output=True,
             text=True,
         )
@@ -111,19 +108,17 @@ class KernelCompileBenchmark(BenchmarkBase):
             "sys_time_seconds": sys_,
         }
 
-    @staticmethod
-    def _run_make(src: str, target: str) -> None:
+    def run_make(self, target: str) -> None:
         """Run a make target and raise on failure.
 
         Args:
-            src: Path to the kernel source tree.
             target: Make target to execute.
 
         Raises:
             RuntimeError: If the make command fails.
         """
         proc = subprocess.run(
-            ["make", "-C", src, target],
+            ["make", "-C", str(self.kernel_src), target],
             capture_output=True,
             text=True,
         )
@@ -132,26 +127,16 @@ class KernelCompileBenchmark(BenchmarkBase):
                 f"make {target} failed (exit {proc.returncode}): {proc.stderr[:500]}"
             )
 
-    def get_command(self) -> list[str] | None:
-        """Return the full build command for perf stat wrapping.
+    def get_command(self) -> list[str]:
+        """Return the build command for perf stat wrapping.
 
-        Includes defconfig, clean, and build steps so that perf stat
-        captures a representative compilation rather than a no-op
-        against an already-built tree.
+        Returns the timed make invocation only; defconfig and clean
+        are run separately in run_once() before this command.
 
         Returns:
-            A shell command as a list of strings, or None if
-            kernel_src is not configured.
+            A shell command as a list of strings.
         """
-        if self.kernel_src is None:
-            return None
-        nproc = os.cpu_count() or 1
-        src = shlex.quote(str(self.kernel_src))
-        return [
-            "sh",
-            "-c",
-            f"make -C {src} defconfig && make -C {src} clean && make -C {src} -j{nproc}",
-        ]
+        return ["time", "-v", "make", "-C", str(self.kernel_src), f"-j{os.cpu_count() or 1}"]
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for kernel compile metrics.

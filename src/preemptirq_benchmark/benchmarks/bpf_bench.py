@@ -88,7 +88,7 @@ class BpfBenchBase(BenchmarkBase):
             text=True,
             check=True,
         )
-        match = re.search(r"Summary:\s+hits\s+([\d.]+)\s*±", proc.stdout)
+        match = re.search(r"Summary:\s+hits\s+([\d.]+)\s*", proc.stdout)
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"hits_m_per_sec": float(match.group(1))}
@@ -154,7 +154,7 @@ class BpfLocalStorageBenchmark(BpfBenchBase):
             text=True,
             check=True,
         )
-        match = re.search(r"hits throughput\s+([\d.]+)\s*±", proc.stdout)
+        match = re.search(r"hits throughput\s+([\d.]+)\s*", proc.stdout)
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"throughput_m_ops_per_sec": float(match.group(1))}

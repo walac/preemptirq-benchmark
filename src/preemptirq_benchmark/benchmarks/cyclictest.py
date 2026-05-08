@@ -56,8 +56,8 @@ class CyclictestBenchmark(BenchmarkBase):
                 check=True,
             )
             try:
-                raw = Path(json_path).read_text(encoding="utf-8")
-                data = json.loads(raw)
+                with open(json_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
             except (json.JSONDecodeError, OSError) as e:
                 raise RuntimeError(f"cannot parse cyclictest JSON output: {e}") from e
         finally:
@@ -68,7 +68,7 @@ class CyclictestBenchmark(BenchmarkBase):
         max_lat = 0.0
         n_threads = 0
 
-        for _tid, thread in data.get("thread", {}).items():
+        for _, thread in data.get("thread", {}).items():
             try:
                 min_lat = min(min_lat, thread["min"])
                 avg_total += thread["avg"]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -34,14 +35,20 @@ class StressNgBenchmark(BenchmarkBase):
             RuntimeError: If the output cannot be parsed.
         """
         proc = subprocess.run(
-            ["stress-ng", "--context", "0", "-t", "30", "--metrics-brief"],
+            self.get_command(),
             capture_output=True,
             text=True,
             check=True,
         )
         output = proc.stderr + proc.stdout
         match = re.search(
-            r"context\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+[\d.]+\s+([\d.]+)",
+            # [bogo ops] [real time] [usr time] [sys time] [bogo ops/s] [bogo ops]
+            r"context"
+            r"\s+[\d.]+"  # [bogo ops]
+            r"\s+[\d.]+"  # [real time]
+            r"\s+[\d.]+"  # [usr time]
+            r"\s+[\d.]+"  # [sys time]
+            r"\s+([\d.]+)",  # [bogo ops/s]
             output,
         )
         if not match:
@@ -54,7 +61,18 @@ class StressNgBenchmark(BenchmarkBase):
         Returns:
             The stress-ng command as a list of strings.
         """
-        return ["stress-ng", "--context", "0", "-t", "30", "--metrics-brief"]
+        return [
+            "stress-ng",
+            "--context",
+            "0",
+            "-t",
+            "1m",
+            "--metrics-brief",
+            "--cpu",
+            f"{max(1, (os.cpu_count() or 1) - 1)}",
+            "--cpu-method",
+            "all",
+        ]
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for stress-ng metrics.
