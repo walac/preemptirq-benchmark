@@ -120,9 +120,12 @@ def load_report(path: str | Path) -> dict[str, Any]:
     if not p.exists():
         raise SystemExit(f"Error: file not found: {p}")
     try:
-        return json.loads(p.read_text())
+        with open(p, "r") as f:
+            return json.load(f)
     except json.JSONDecodeError as e:
         raise SystemExit(f"Error: invalid JSON in {p}: {e}") from e
+    except OSError as e:
+        raise SystemExit(f"Error: cannot read file {p}: {e}") from e
 
 
 def display_report(report: dict[str, Any], fmt: str) -> None:
