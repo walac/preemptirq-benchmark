@@ -15,12 +15,13 @@ from preemptirq_benchmark.benchmarks import (
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.stats import compute_stats
 
-REPORT_VERSION = 2
+REPORT_VERSION = 3
 
 
 def build_report(
     results: list[BenchmarkResult],
     tracerbench_config: dict[str, int] | None = None,
+    ci_pct: float = 95.0,
 ) -> dict[str, Any]:
     """Build a full report dict from benchmark results.
 
@@ -29,6 +30,7 @@ def build_report(
             benchmark runs.
         tracerbench_config: Optional dict with nr_samples, nr_highest,
             and percentile_nth for the tracerbench module.
+        ci_pct: Confidence interval percentage (default 95.0).
 
     Returns:
         A JSON-serializable dict containing version, metadata,
@@ -40,6 +42,7 @@ def build_report(
         "hostname": platform.node(),
         "kernel_version": platform.release(),
         "nr_cpus": os.cpu_count(),
+        "ci_pct": ci_pct,
         "benchmarks_run": [r.name for r in results],
         "results": {},
     }
@@ -57,7 +60,7 @@ def build_report(
         for metric_name, values in result.metrics.items():
             if not values:
                 continue
-            stats = compute_stats(values)
+            stats = compute_stats(values, ci_pct=ci_pct)
             unit = result.units.get(metric_name, "")
             entry["metrics"][metric_name] = {
                 "unit": unit,
@@ -132,7 +135,7 @@ def display_report(report: dict[str, Any], fmt: str) -> None:
     """Print a report to stdout in the requested format.
 
     Each benchmark gets its own table with one row per metric
-    showing Mean, Median, StdDev, and 95% CI.
+    showing Mean, Median, StdDev, and confidence interval.
 
     Args:
         report: A report dict from :func:`build_report` or
@@ -145,12 +148,14 @@ def display_report(report: dict[str, Any], fmt: str) -> None:
 
     print_header(report, fmt)
 
+    ci_pct = report.get("ci_pct", 95.0)
+
     for bench_name in report["benchmarks_run"]:
         bench_data = report["results"][bench_name]
         desc = BENCHMARK_DESCRIPTIONS.get(bench_name, "")
         title = f"{bench_name} ({desc})"
 
-        headers = ["Metric", "Mean", "Median", "StdDev", "95% CI"]
+        headers = ["Metric", "Mean", "Median", "StdDev", f"{ci_pct:g}% CI"]
         rows: list[list[str]] = []
 
         for metric_name, mdata in bench_data["metrics"].items():
