@@ -16,6 +16,7 @@ class DescriptiveStats:
         stddev: Sample standard deviation (Bessel's correction).
         ci_low: Lower bound of the confidence interval.
         ci_high: Upper bound of the confidence interval.
+        ci_pct: Confidence level as a percentage (e.g. 95.0).
         n: Number of observations.
     """
 
@@ -24,6 +25,7 @@ class DescriptiveStats:
     stddev: float
     ci_low: float
     ci_high: float
+    ci_pct: float
     n: int
 
 
@@ -47,11 +49,13 @@ class SignificanceResult:
     label: str
 
 
-def compute_stats(values: list[float]) -> DescriptiveStats:
+def compute_stats(values: list[float], ci_pct: float = 95.0) -> DescriptiveStats:
     """Compute descriptive statistics for a list of measurements.
 
     Args:
         values: List of numeric observations (must not be empty).
+        ci_pct: Confidence level as a percentage (default 95.0).
+            Must be between 0 and 100 exclusive.
 
     Returns:
         A DescriptiveStats instance with mean, median, stddev,
@@ -62,6 +66,8 @@ def compute_stats(values: list[float]) -> DescriptiveStats:
     """
     if not values:
         raise ValueError("cannot compute statistics on empty list")
+    if not (0 < ci_pct < 100):
+        raise ValueError(f"ci_pct must be between 0 and 100 exclusive, got {ci_pct}")
 
     n = len(values)
     mean = sum(values) / n
@@ -77,7 +83,8 @@ def compute_stats(values: list[float]) -> DescriptiveStats:
 
     if n > 1:
         stderr = stddev / math.sqrt(n)
-        t_crit = float(t.ppf(1 - 0.025, df=n - 1))
+        alpha = (1 - ci_pct / 100) / 2
+        t_crit = float(t.ppf(1 - alpha, df=n - 1))
         margin = t_crit * stderr
     else:
         margin = 0.0
@@ -91,6 +98,7 @@ def compute_stats(values: list[float]) -> DescriptiveStats:
         stddev=stddev,
         ci_low=ci_low,
         ci_high=ci_high,
+        ci_pct=ci_pct,
         n=n,
     )
 
