@@ -74,6 +74,13 @@ def main(argv: list[str] | None = None) -> None:
         cmd_compare(args)
 
 
+def _ci_percentage(value: str) -> float:
+    f = float(value)
+    if not (0 < f < 100):
+        raise argparse.ArgumentTypeError(f"must be between 0 and 100 exclusive, got {f}")
+    return f
+
+
 def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     """Register the 'run' subcommand and its arguments.
 
@@ -125,6 +132,13 @@ def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         type=str,
         default=None,
         help="Output file path (default: auto-generated)",
+    )
+
+    run.add_argument(
+        "--confidence-interval",
+        type=_ci_percentage,
+        default=95.0,
+        help="Confidence interval percentage, 0 < ci < 100 (default: 95)",
     )
 
     run.add_argument("--samples", type=int, default=None, help="tracerbench: nr_samples")
@@ -272,7 +286,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         if args.percentile is not None:
             tracerbench_config["percentile_nth"] = args.percentile
 
-    report = build_report(results, tracerbench_config)
+    report = build_report(results, tracerbench_config, ci_pct=args.confidence_interval)
     path = save_report(report, args.output)
     print(f"Report saved to: {path}")
     print()
