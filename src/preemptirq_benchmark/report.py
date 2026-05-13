@@ -162,7 +162,7 @@ def display_report(report: dict[str, Any], fmt: str) -> None:
                     f"{mdata['mean']:.2f}{suffix}",
                     f"{mdata['median']:.2f}{suffix}",
                     f"{mdata['stddev']:.3f}",
-                    f"[{mdata['ci_95_low']:.2f}, {mdata['ci_95_high']:.2f}]",
+                    f"[{mdata['ci_low']:.2f}, {mdata['ci_high']:.2f}]",
                 ]
             )
 

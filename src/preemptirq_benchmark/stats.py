@@ -14,16 +14,16 @@ class DescriptiveStats:
         mean: Arithmetic mean.
         median: Middle value (or average of two middle values).
         stddev: Sample standard deviation (Bessel's correction).
-        ci_95_low: Lower bound of the 95% confidence interval.
-        ci_95_high: Upper bound of the 95% confidence interval.
+        ci_low: Lower bound of the confidence interval.
+        ci_high: Upper bound of the confidence interval.
         n: Number of observations.
     """
 
     mean: float
     median: float
     stddev: float
-    ci_95_low: float
-    ci_95_high: float
+    ci_low: float
+    ci_high: float
     n: int
 
 
@@ -55,7 +55,7 @@ def compute_stats(values: list[float]) -> DescriptiveStats:
 
     Returns:
         A DescriptiveStats instance with mean, median, stddev,
-        95% confidence interval bounds, and sample count.
+        confidence interval bounds, and sample count.
 
     Raises:
         ValueError: If values is empty.
@@ -82,15 +82,15 @@ def compute_stats(values: list[float]) -> DescriptiveStats:
     else:
         margin = 0.0
 
-    ci_95_low = mean - margin
-    ci_95_high = mean + margin
+    ci_low = mean - margin
+    ci_high = mean + margin
 
     return DescriptiveStats(
         mean=mean,
         median=median,
         stddev=stddev,
-        ci_95_low=ci_95_low,
-        ci_95_high=ci_95_high,
+        ci_low=ci_low,
+        ci_high=ci_high,
         n=n,
     )
 
