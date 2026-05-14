@@ -15,6 +15,7 @@ dependencies = [
 
 [project.scripts]
 preemptirq-benchmark = "preemptirq_benchmark.__main__:main"
+codegen-overhead = "preemptirq_benchmark.codegen:main"
 
 [dependency-groups]
 dev = [
