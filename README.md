@@ -120,6 +120,40 @@ Comparison output shows:
 - Other reports as +/-% relative to baseline
 - Significance markers: `(**)` p<0.01, `(*)` p<0.05, `(ns)` not significant
 
+### Analyze code generation overhead
+
+The `codegen-overhead` tool statically compares two vmlinux binaries -- a
+baseline without tracepoints and a target with `TRACE_PREEMPT_TOGGLE` /
+`TRACE_IRQFLAGS_TOGGLE` enabled -- to measure the per-function instruction
+overhead introduced by the instrumentation.
+
+```bash
+# Compare two builds (terminal output)
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target
+
+# Export a pandoc-ready markdown report
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target -o report.md
+
+# Cross-compile analysis (e.g. ARM64 kernels on x86)
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --cross-compile aarch64-linux-gnu-
+
+# Filter out functions likely affected by compiler inlining differences
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --filter-inlining
+
+# Sort by absolute instruction difference
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --sort diff
+
+# Dump disassembly of specific functions for manual inspection
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --functions=schedule,__switch_to --output-asm-dir asm/
+```
+
+Functions that trigger inlining-difference heuristics are marked with `*`
+in the output. Use `--filter-inlining` to exclude them instead.
+
 ## Output formats (show and compare)
 
 The `--format` option is available on the `show` and `compare` subcommands.
