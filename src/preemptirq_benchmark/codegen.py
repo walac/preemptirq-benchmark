@@ -77,9 +77,9 @@ INSN_RE = re.compile(r"^\s*[0-9a-f]+:")
 # in group 1 and checked against TRACE_HELPERS.
 CALL_RE = re.compile(r"(?:callq?|bl|brasl|jalr?)\b.*<([^>]+)>")
 
-# Inlining-difference filter thresholds — functions exceeding these are
-# excluded from the report as likely artefacts of unrelated compiler
-# inlining decisions rather than tracepoint overhead.
+# Inlining-difference thresholds — functions exceeding these are flagged
+# as likely artefacts of unrelated compiler inlining decisions rather
+# than tracepoint overhead (excluded when --filter-inlining is used).
 MAX_DIFF_PER_CALL = 20
 MAX_PCT_CHANGE = 100
 MAX_SHRINK_PER_CALL = 10
@@ -125,6 +125,7 @@ class CompareRow:
     pct: float
     total_calls: int
     breakdown: str
+    inlining_suspect: bool = False
 
 
 @dataclass
@@ -134,6 +135,7 @@ class Summary:
     functions_analyzed: int
     functions_skipped_missing: int
     functions_filtered_inlining: int
+    functions_flagged_inlining: int
     total_base: int
     total_target: int
     total_diff: int
@@ -202,7 +204,6 @@ def extract_function_data(
     task: TaskID,
     cross_compile: str = "",
     objdump_args: list[str] | None = None,
-    *,
     track_trace_calls: bool = False,
 ) -> dict[str, FuncTrace]:
     """Count instructions per function, optionally tracking trace helper calls.
@@ -256,18 +257,26 @@ def extract_function_data(
 
 
 def build_comparison(
-    target_data: dict[str, FuncTrace], base_data: dict[str, FuncTrace]
+    target_data: dict[str, FuncTrace],
+    base_data: dict[str, FuncTrace],
+    *,
+    filter_inlining: bool = False,
 ) -> tuple[list[CompareRow], Summary]:
-    """Join target and base data, compute deltas, and filter outliers.
+    """Join target and base data, compute deltas, and detect outliers.
 
     For each function present in both builds, computes the instruction
     count difference and percentage change. Functions where the delta
-    is disproportionate to the number of trace call sites are filtered
-    out as likely artefacts of unrelated compiler inlining decisions.
+    is disproportionate to the number of trace call sites are flagged
+    as likely artefacts of unrelated compiler inlining decisions.
+
+    When *filter_inlining* is True, flagged functions are excluded from
+    the report. When False (the default), they are included and marked.
 
     Args:
         target_data: Per-function trace data from the target build.
         base_data: Per-function data from the base build.
+        filter_inlining: When True, exclude inlining-suspect functions
+            instead of marking them.
 
     Returns:
         A tuple of (comparison rows, aggregate summary statistics).
@@ -275,6 +284,7 @@ def build_comparison(
     rows: list[CompareRow] = []
     skipped_missing = 0
     skipped_inlining = 0
+    flagged_inlining = 0
 
     for name in sorted(target_data):
         td = target_data[name]
@@ -292,17 +302,22 @@ def build_comparison(
         pct = (diff / base) * 100
         tc = td.total_calls
 
+        suspect = False
         if tc > 0 and abs(diff) / tc > MAX_DIFF_PER_CALL:
-            skipped_inlining += 1
-            continue
-        if abs(pct) > MAX_PCT_CHANGE:
-            skipped_inlining += 1
-            continue
-        if diff < 0 and abs(diff) > tc * MAX_SHRINK_PER_CALL:
+            suspect = True
+        elif abs(pct) > MAX_PCT_CHANGE:
+            suspect = True
+        elif diff < 0 and abs(diff) > tc * MAX_SHRINK_PER_CALL:
+            suspect = True
+
+        if suspect and filter_inlining:
             skipped_inlining += 1
             continue
 
-        rows.append(CompareRow(name, base, target, diff, pct, tc, td.breakdown()))
+        if suspect:
+            flagged_inlining += 1
+
+        rows.append(CompareRow(name, base, target, diff, pct, tc, td.breakdown(), suspect))
 
     total_base = sum(r.base_insns for r in rows)
     total_target = sum(r.target_insns for r in rows)
@@ -324,6 +339,7 @@ def build_comparison(
         functions_analyzed=len(rows),
         functions_skipped_missing=skipped_missing,
         functions_filtered_inlining=skipped_inlining,
+        functions_flagged_inlining=flagged_inlining,
         total_base=total_base,
         total_target=total_target,
         total_diff=total_diff,
@@ -372,8 +388,12 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
         f.write("| Function | Base | Trace | Diff | Diff% | Calls | Breakdown |\n")
         f.write("|:---------|-----:|------:|-----:|------:|------:|:----------|\n")
 
+        has_suspects = False
         for r in rows:
             fn = r.name.replace("|", r"\|").replace("_", r"\_")
+            if r.inlining_suspect:
+                fn += " \\*"
+                has_suspects = True
             sign = "+" if r.diff >= 0 else ""
             f.write(
                 f"| {fn} | {r.base_insns} | {r.target_insns} "
@@ -381,13 +401,19 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
                 f"| {r.total_calls} | {r.breakdown} |\n"
             )
 
+        if has_suspects:
+            f.write("\n\\* likely affected by compiler inlining differences.\n")
+
         s = summary
         f.write("\n## Summary\n\n")
         f.write("| Metric | Value |\n")
         f.write("|:-------|------:|\n")
         f.write(f"| Functions analyzed | {s.functions_analyzed} |\n")
         f.write(f"| Functions skipped (not in both builds) | {s.functions_skipped_missing} |\n")
-        f.write(f"| Functions filtered (inlining diffs) | {s.functions_filtered_inlining} |\n")
+        if s.functions_filtered_inlining:
+            f.write(f"| Functions filtered (inlining diffs) | {s.functions_filtered_inlining} |\n")
+        if s.functions_flagged_inlining:
+            f.write(f"| Functions flagged (inlining diffs) | {s.functions_flagged_inlining} |\n")
         f.write(f"| Total baseline instructions | {s.total_base:,} |\n")
         f.write(f"| Total traced instructions | {s.total_target:,} |\n")
         f.write(f"| Total difference | {s.total_diff:+,} ({s.total_pct:+.2f}%) |\n")
@@ -444,9 +470,10 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
         else:
             diff_style = "red"
 
+        fn = f"{r.name} *" if r.inlining_suspect else r.name
         sign = "+" if r.diff >= 0 else ""
         table.add_row(
-            r.name,
+            fn,
             str(r.base_insns),
             str(r.target_insns),
             f"[{diff_style}]{sign}{r.diff}[/]",
@@ -456,12 +483,20 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
         )
 
     console.print(table)
+    if any(r.inlining_suspect for r in rows):
+        console.print("[dim]* likely affected by compiler inlining differences[/]")
     console.print()
 
+    summary_lines = [
+        f"[bold]Functions analyzed:[/] {s.functions_analyzed}",
+        f"[bold]Skipped (not in both builds):[/] {s.functions_skipped_missing}",
+    ]
+    if s.functions_filtered_inlining:
+        summary_lines.append(f"[bold]Filtered (inlining diffs):[/] {s.functions_filtered_inlining}")
+    if s.functions_flagged_inlining:
+        summary_lines.append(f"[bold]Flagged (inlining diffs):[/] {s.functions_flagged_inlining}")
     summary_text = (
-        f"[bold]Functions analyzed:[/] {s.functions_analyzed}\n"
-        f"[bold]Skipped (not in both builds):[/] {s.functions_skipped_missing}\n"
-        f"[bold]Filtered (inlining diffs):[/] {s.functions_filtered_inlining}\n"
+        "\n".join(summary_lines) + "\n"
         f"[bold]Total baseline instructions:[/] {s.total_base:,}\n"
         f"[bold]Total traced instructions:[/] {s.total_target:,}\n"
         f"[bold]Total difference:[/] {s.total_diff:+,} ({s.total_pct:+.2f}%)\n"
@@ -627,6 +662,11 @@ def parse_args() -> argparse.Namespace:
         choices=["name", "diff", "pct"],
         help="Sort results by function name (ascending), absolute diff, or %% change (default: name)",
     )
+    parser.add_argument(
+        "--filter-inlining",
+        action="store_true",
+        help="Filter out functions likely affected by compiler inlining differences",
+    )
     return parser.parse_args()
 
 
@@ -652,7 +692,7 @@ def main() -> None:
 
     2. **Analysis** (default): disassembles both builds, identifies
        functions affected by tracepoint instrumentation, computes
-       instruction count deltas, filters inlining artefacts, and
+       instruction count deltas, detects inlining artefacts, and
        renders the comparison report to the terminal or a markdown file.
 
     ``--no-analysis`` skips mode 2, useful when only the assembly
@@ -718,7 +758,7 @@ def main() -> None:
         )
         raise SystemExit(1)
 
-    rows, summary = build_comparison(target_data, base_data)
+    rows, summary = build_comparison(target_data, base_data, filter_inlining=args.filter_inlining)
 
     sort_keys = {
         "name": lambda r: r.name,
