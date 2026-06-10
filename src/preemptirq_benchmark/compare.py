@@ -45,9 +45,7 @@ def _build_comparison_rows(
         row.append(format_base(base_data) if base_data else "N/A")
 
         for other in others:
-            other_data = (
-                other.get("results", {}).get(bench_name, {}).get(section, {}).get(key)
-            )
+            other_data = other.get("results", {}).get(bench_name, {}).get(section, {}).get(key)
             if other_data is None:
                 row.append("N/A")
             elif base_data is None:
@@ -105,7 +103,10 @@ def compare_reports(
 
         rows.extend(
             _build_comparison_rows(
-                base, reports[1:], bench_name, "metrics",
+                base,
+                reports[1:],
+                bench_name,
+                "metrics",
                 label_fn=lambda name: name,
                 format_base=_fmt_metric,
                 format_delta=lambda bd, od: (
@@ -117,7 +118,10 @@ def compare_reports(
         )
         rows.extend(
             _build_comparison_rows(
-                base, reports[1:], bench_name, "perf_counters",
+                base,
+                reports[1:],
+                bench_name,
+                "perf_counters",
                 label_fn=lambda name: f"perf:{name}",
                 format_base=lambda d: f"{d['mean']:.0f}",
                 format_delta=lambda bd, od: format_delta_pct(

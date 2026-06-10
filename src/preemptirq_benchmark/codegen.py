@@ -618,15 +618,17 @@ def _rows_to_table_data(
     for r in rows:
         fn = f"{r.name} *" if r.inlining_suspect else r.name
         sign = "+" if r.diff >= 0 else ""
-        table_rows.append([
-            fn,
-            str(r.base_insns),
-            str(r.target_insns),
-            f"{sign}{r.diff}",
-            f"{r.pct:+.1f}%",
-            str(r.total_calls),
-            r.breakdown,
-        ])
+        table_rows.append(
+            [
+                fn,
+                str(r.base_insns),
+                str(r.target_insns),
+                f"{sign}{r.diff}",
+                f"{r.pct:+.1f}%",
+                str(r.total_calls),
+                r.breakdown,
+            ]
+        )
     return headers, table_rows
 
 
@@ -640,13 +642,15 @@ def _summary_to_table_data(summary: Summary) -> tuple[list[str], list[list[str]]
         rows.append(["Filtered (inlining diffs)", str(s.functions_filtered_inlining)])
     if s.functions_flagged_inlining:
         rows.append(["Flagged (inlining diffs)", str(s.functions_flagged_inlining)])
-    rows.extend([
-        ["Total baseline instructions", f"{s.total_base:,}"],
-        ["Total traced instructions", f"{s.total_target:,}"],
-        ["Total difference", f"{s.total_diff:+,} ({s.total_pct:+.2f}%)"],
-        ["Total trace call sites", f"{s.total_calls:,}"],
-        ["Avg overhead per call site", f"{s.avg_per_call:.1f} insns"],
-    ])
+    rows.extend(
+        [
+            ["Total baseline instructions", f"{s.total_base:,}"],
+            ["Total traced instructions", f"{s.total_target:,}"],
+            ["Total difference", f"{s.total_diff:+,} ({s.total_pct:+.2f}%)"],
+            ["Total trace call sites", f"{s.total_calls:,}"],
+            ["Avg overhead per call site", f"{s.avg_per_call:.1f} insns"],
+        ]
+    )
     return ["Metric", "Value"], rows
 
 
@@ -704,9 +708,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--base", required=True, help="Baseline vmlinux (without tracepoints)")
     parser.add_argument("--target", required=True, help="Target vmlinux (with tracepoints enabled)")
-    parser.add_argument(
-        "-o", metavar="FILE", help="Output file (default: terminal display)"
-    )
+    parser.add_argument("-o", metavar="FILE", help="Output file (default: terminal display)")
     parser.add_argument(
         "--format",
         choices=["ascii", "txt", "markdown", "json"],

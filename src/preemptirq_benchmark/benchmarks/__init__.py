@@ -255,6 +255,4 @@ def import_all() -> None:
     ALL_BENCHMARK_NAMES.clear()
     ALL_BENCHMARK_NAMES.extend(sorted(REGISTRY.keys()))
     BENCHMARK_DESCRIPTIONS.clear()
-    BENCHMARK_DESCRIPTIONS.update(
-        {name: cls.description for name, cls in REGISTRY.items()}
-    )
+    BENCHMARK_DESCRIPTIONS.update({name: cls.description for name, cls in REGISTRY.items()})
