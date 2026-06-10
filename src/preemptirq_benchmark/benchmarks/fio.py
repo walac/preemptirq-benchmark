@@ -15,6 +15,7 @@ class FioBenchmark(BenchmarkBase):
     """I/O interrupt stress benchmark using fio with null_blk and io_uring."""
 
     name = "fio"
+    description = "I/O interrupt stress (null_blk + io_uring)"
     default_iterations = 10
 
     def check_prerequisites(self) -> tuple[bool, str]:

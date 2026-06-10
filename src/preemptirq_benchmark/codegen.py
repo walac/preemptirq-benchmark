@@ -9,6 +9,7 @@ instruction count deltas and trace call site counts.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import shlex
@@ -18,6 +19,8 @@ import subprocess
 from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+
+from preemptirq_benchmark.formatters import format_table
 
 from rich.console import Console
 from rich.panel import Panel
@@ -607,6 +610,93 @@ def dump_functions(
     con.print(f"Wrote {written} assembly files to {output_dir}/")
 
 
+def _rows_to_table_data(
+    rows: list[CompareRow],
+) -> tuple[list[str], list[list[str]]]:
+    headers = ["Function", "Base", "Trace", "Diff", "Diff%", "Calls", "Breakdown"]
+    table_rows = []
+    for r in rows:
+        fn = f"{r.name} *" if r.inlining_suspect else r.name
+        sign = "+" if r.diff >= 0 else ""
+        table_rows.append([
+            fn,
+            str(r.base_insns),
+            str(r.target_insns),
+            f"{sign}{r.diff}",
+            f"{r.pct:+.1f}%",
+            str(r.total_calls),
+            r.breakdown,
+        ])
+    return headers, table_rows
+
+
+def _summary_to_table_data(summary: Summary) -> tuple[list[str], list[list[str]]]:
+    s = summary
+    rows: list[list[str]] = [
+        ["Functions analyzed", str(s.functions_analyzed)],
+        ["Skipped (not in both builds)", str(s.functions_skipped_missing)],
+    ]
+    if s.functions_filtered_inlining:
+        rows.append(["Filtered (inlining diffs)", str(s.functions_filtered_inlining)])
+    if s.functions_flagged_inlining:
+        rows.append(["Flagged (inlining diffs)", str(s.functions_flagged_inlining)])
+    rows.extend([
+        ["Total baseline instructions", f"{s.total_base:,}"],
+        ["Total traced instructions", f"{s.total_target:,}"],
+        ["Total difference", f"{s.total_diff:+,} ({s.total_pct:+.2f}%)"],
+        ["Total trace call sites", f"{s.total_calls:,}"],
+        ["Avg overhead per call site", f"{s.avg_per_call:.1f} insns"],
+    ])
+    return ["Metric", "Value"], rows
+
+
+def output_txt(rows: list[CompareRow], summary: Summary) -> str:
+    headers, table_rows = _rows_to_table_data(rows)
+    result = format_table("Tracepoint Code Generation Overhead", headers, table_rows, "txt")
+    sh, sr = _summary_to_table_data(summary)
+    result += format_table("Summary", sh, sr, "txt")
+    return result
+
+
+def output_json(rows: list[CompareRow], summary: Summary) -> str:
+    data = {
+        "title": "Tracepoint Code Generation Overhead",
+        "functions": [
+            {
+                "name": r.name,
+                "base_insns": r.base_insns,
+                "target_insns": r.target_insns,
+                "diff": r.diff,
+                "pct": round(r.pct, 1),
+                "total_calls": r.total_calls,
+                "breakdown": r.breakdown,
+                "inlining_suspect": r.inlining_suspect,
+            }
+            for r in rows
+        ],
+        "summary": {
+            "functions_analyzed": summary.functions_analyzed,
+            "functions_skipped_missing": summary.functions_skipped_missing,
+            "functions_filtered_inlining": summary.functions_filtered_inlining,
+            "functions_flagged_inlining": summary.functions_flagged_inlining,
+            "total_base": summary.total_base,
+            "total_target": summary.total_target,
+            "total_diff": summary.total_diff,
+            "total_pct": round(summary.total_pct, 2),
+            "total_calls": summary.total_calls,
+            "avg_per_call": round(summary.avg_per_call, 1),
+            "distribution": {
+                "min": summary.dist_min,
+                "p25": summary.dist_p25,
+                "median": summary.dist_median,
+                "p75": summary.dist_p75,
+                "max": summary.dist_max,
+            },
+        },
+    }
+    return json.dumps(data, indent=2)
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -615,7 +705,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base", required=True, help="Baseline vmlinux (without tracepoints)")
     parser.add_argument("--target", required=True, help="Target vmlinux (with tracepoints enabled)")
     parser.add_argument(
-        "-o", metavar="FILE", help="Output markdown file (default: terminal display)"
+        "-o", metavar="FILE", help="Output file (default: terminal display)"
+    )
+    parser.add_argument(
+        "--format",
+        choices=["ascii", "txt", "markdown", "json"],
+        default=None,
+        dest="fmt",
+        help="Output format (default: ascii, or inferred from -o extension)",
     )
     parser.add_argument(
         "--cross-compile",
@@ -774,11 +871,32 @@ def main() -> None:
         )
         raise SystemExit(1)
 
+    fmt = args.fmt
+    if fmt is None and args.o:
+        ext_map = {".md": "markdown", ".markdown": "markdown", ".txt": "txt", ".json": "json"}
+        ext = os.path.splitext(args.o)[1].lower()
+        fmt = ext_map.get(ext, "ascii")
+    if fmt is None:
+        fmt = "ascii"
+
     if args.o:
-        output_markdown(rows, summary, args.o)
+        if fmt == "markdown":
+            output_markdown(rows, summary, args.o)
+        else:
+            writers = {"ascii": output_txt, "txt": output_txt, "json": output_json}
+            write_fn = writers[fmt]
+            with open(args.o, "w") as f:
+                f.write(write_fn(rows, summary) + "\n")
         console.print(f"Report written to {args.o}")
     else:
-        output_terminal(rows, summary)
+        if fmt == "json":
+            print(output_json(rows, summary))
+        elif fmt == "txt":
+            print(output_txt(rows, summary))
+        elif fmt == "markdown":
+            raise SystemExit("error: markdown format requires -o FILE")
+        else:
+            output_terminal(rows, summary)
 
 
 if __name__ == "__main__":

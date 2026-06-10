@@ -20,6 +20,7 @@ class KernelCompileBenchmark(BenchmarkBase):
     """
 
     name = "kernel-compile"
+    description = "Kernel build throughput (make -j)"
     default_iterations = 10
 
     def __init__(self) -> None:

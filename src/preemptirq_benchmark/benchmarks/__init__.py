@@ -4,41 +4,9 @@ import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 
-ALL_BENCHMARK_NAMES = [
-    "hackbench",
-    "iperf3",
-    "fio",
-    "stress-ng",
-    "cyclictest",
-    "perf-bench",
-    "kernel-compile",
-    "rtla",
-    "tracerbench",
-    "bpf-fentry",
-    "bpf-tp",
-    "bpf-kprobe",
-    "bpf-local-storage",
-    "bpf-hashmap",
-    "bpf-kernel-count",
-]
+ALL_BENCHMARK_NAMES: list[str] = []
 
-BENCHMARK_DESCRIPTIONS = {
-    "hackbench": "Scheduler/IPC stress",
-    "iperf3": "Networking throughput and jitter",
-    "fio": "I/O interrupt stress (null_blk + io_uring)",
-    "stress-ng": "Context switch saturation",
-    "cyclictest": "RT scheduling latency",
-    "perf-bench": "In-tree scheduler benchmarks",
-    "kernel-compile": "Kernel build throughput (make -j)",
-    "rtla": "RT latency (timerlat + osnoise)",
-    "tracerbench": "Kernel module micro-benchmark (CPU cycles)",
-    "bpf-fentry": "BPF fentry trampoline overhead",
-    "bpf-tp": "BPF tracepoint overhead",
-    "bpf-kprobe": "BPF kprobe overhead",
-    "bpf-local-storage": "BPF local storage (irq save/restore)",
-    "bpf-hashmap": "BPF hashmap update (spin lock)",
-    "bpf-kernel-count": "BPF in-kernel counting (baseline)",
-}
+BENCHMARK_DESCRIPTIONS: dict[str, str] = {}
 
 
 @dataclass
@@ -70,6 +38,7 @@ class BenchmarkBase(ABC):
 
     Attributes:
         name: Short identifier used in CLI flags and report keys.
+        description: One-line summary of what this benchmark measures.
         default_iterations: How many times to repeat when --iterations
             is not specified.
         supports_perf_stat: Whether this benchmark can be wrapped with
@@ -78,6 +47,7 @@ class BenchmarkBase(ABC):
     """
 
     name: str
+    description: str = ""
     default_iterations: int
     supports_perf_stat: bool = True
 
@@ -264,12 +234,14 @@ def resolve_benchmarks(
 
 
 def import_all() -> None:
-    """Import all benchmark modules to trigger registration.
+    """Import all benchmark modules and populate metadata from the registry.
 
     Must be called once before :func:`get_benchmark` to ensure all
     :func:`register`-decorated classes are loaded.  Discovers modules
     automatically from the package directory instead of maintaining a
-    hardcoded import list.
+    hardcoded import list.  After loading, derives
+    :data:`ALL_BENCHMARK_NAMES` and :data:`BENCHMARK_DESCRIPTIONS`
+    from the populated :data:`REGISTRY`.
     """
     import importlib
     import pkgutil
@@ -279,3 +251,10 @@ def import_all() -> None:
     for info in pkgutil.iter_modules(pkg.__path__):
         if not info.ispkg and not info.name.startswith("_"):
             importlib.import_module(f"{pkg.__name__}.{info.name}")
+
+    ALL_BENCHMARK_NAMES.clear()
+    ALL_BENCHMARK_NAMES.extend(sorted(REGISTRY.keys()))
+    BENCHMARK_DESCRIPTIONS.clear()
+    BENCHMARK_DESCRIPTIONS.update(
+        {name: cls.description for name, cls in REGISTRY.items()}
+    )

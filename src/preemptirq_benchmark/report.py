@@ -6,7 +6,6 @@ import platform
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
 
 from preemptirq_benchmark.benchmarks import (
     BENCHMARK_DESCRIPTIONS,
@@ -14,6 +13,7 @@ from preemptirq_benchmark.benchmarks import (
 )
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.stats import compute_stats
+from preemptirq_benchmark.types import BenchmarkEntry, Report
 
 REPORT_VERSION = 3
 
@@ -22,7 +22,7 @@ def build_report(
     results: list[BenchmarkResult],
     tracerbench_config: dict[str, int] | None = None,
     ci_pct: float = 95.0,
-) -> dict[str, Any]:
+) -> Report:
     """Build a full report dict from benchmark results.
 
     Args:
@@ -36,7 +36,7 @@ def build_report(
         A JSON-serializable dict containing version, metadata,
         benchmark names, and per-benchmark statistics.
     """
-    report: dict[str, Any] = {
+    report: Report = {
         "version": REPORT_VERSION,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "hostname": platform.node(),
@@ -48,7 +48,7 @@ def build_report(
     }
 
     for result in results:
-        entry: dict[str, Any] = {
+        entry: BenchmarkEntry = {
             "iterations": result.iterations,
             "metrics": {},
             "perf_counters": {},
@@ -84,7 +84,7 @@ def build_report(
     return report
 
 
-def save_report(report: dict[str, Any], output: str | None = None) -> Path:
+def save_report(report: Report, output: str | None = None) -> Path:
     """Save a report dict to a JSON file.
 
     Args:
@@ -107,7 +107,7 @@ def save_report(report: dict[str, Any], output: str | None = None) -> Path:
     return path
 
 
-def load_report(path: str | Path) -> dict[str, Any]:
+def load_report(path: str | Path) -> Report:
     """Load a report from a JSON file.
 
     Args:
@@ -131,7 +131,7 @@ def load_report(path: str | Path) -> dict[str, Any]:
         raise SystemExit(f"Error: cannot read file {p}: {e}") from e
 
 
-def display_report(report: dict[str, Any], fmt: str) -> None:
+def display_report(report: Report, fmt: str) -> None:
     """Print a report to stdout in the requested format.
 
     Each benchmark gets its own table with one row per metric
@@ -186,7 +186,7 @@ def display_report(report: dict[str, Any], fmt: str) -> None:
         print(format_table(title, headers, rows, fmt))
 
 
-def print_header(report: dict[str, Any], fmt: str) -> None:
+def print_header(report: Report, fmt: str) -> None:
     """Print the report metadata header.
 
     Args:

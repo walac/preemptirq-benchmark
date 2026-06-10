@@ -13,6 +13,7 @@ class StressNgBenchmark(BenchmarkBase):
     """Context switch saturation benchmark using stress-ng."""
 
     name = "stress-ng"
+    description = "Context switch saturation"
     default_iterations = 10
 
     def check_prerequisites(self) -> tuple[bool, str]:

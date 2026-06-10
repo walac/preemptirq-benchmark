@@ -14,6 +14,7 @@ class CyclictestBenchmark(BenchmarkBase):
     """RT scheduling latency benchmark using cyclictest."""
 
     name = "cyclictest"
+    description = "RT scheduling latency"
     default_iterations = 30
 
     def check_prerequisites(self) -> tuple[bool, str]:

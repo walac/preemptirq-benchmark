@@ -12,6 +12,7 @@ class HackbenchBenchmark(BenchmarkBase):
     """Scheduler/IPC stress benchmark using hackbench."""
 
     name = "hackbench"
+    description = "Scheduler/IPC stress"
     default_iterations = 10
 
     def check_prerequisites(self) -> tuple[bool, str]:

@@ -8,6 +8,7 @@ from typing import Any
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.report import load_report
+from preemptirq_benchmark.types import MetricData, Report
 from preemptirq_benchmark.stats import (
     compute_delta_pct,
     format_delta_pct,
@@ -15,15 +16,15 @@ from preemptirq_benchmark.stats import (
 )
 
 
-def _fmt_metric(mdata: dict[str, Any]) -> str:
+def _fmt_metric(mdata: MetricData) -> str:
     unit = mdata.get("unit", "")
     suffix = f" {unit}" if unit else ""
     return f"{mdata['mean']:.2f}{suffix}"
 
 
 def _build_comparison_rows(
-    base: dict[str, Any],
-    others: list[dict[str, Any]],
+    base: Report,
+    others: list[Report],
     bench_name: str,
     section: str,
     *,
@@ -130,7 +131,7 @@ def compare_reports(
 
 
 def build_comparison_data(
-    reports: list[dict[str, Any]],
+    reports: list[Report],
     labels: list[str],
 ) -> dict[str, Any]:
     """Build a JSON-serializable comparison structure.
@@ -200,7 +201,7 @@ def build_comparison_data(
 
 
 def print_comparison_header(
-    reports: list[dict[str, Any]],
+    reports: list[Report],
     labels: list[str],
     fmt: str,
 ) -> None:

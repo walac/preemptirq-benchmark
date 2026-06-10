@@ -107,6 +107,7 @@ class BpfFentryBenchmark(BpfBenchBase):
     """BPF fentry trampoline overhead benchmark."""
 
     name = "bpf-fentry"
+    description = "BPF fentry trampoline overhead"
     bench_name = "trig-fentry"
     affinity = True
 
@@ -116,6 +117,7 @@ class BpfTpBenchmark(BpfBenchBase):
     """BPF tracepoint overhead benchmark."""
 
     name = "bpf-tp"
+    description = "BPF tracepoint overhead"
     bench_name = "trig-tp"
     affinity = True
 
@@ -125,6 +127,7 @@ class BpfKprobeBenchmark(BpfBenchBase):
     """BPF kprobe overhead benchmark."""
 
     name = "bpf-kprobe"
+    description = "BPF kprobe overhead"
     bench_name = "trig-kprobe"
     affinity = True
 
@@ -134,6 +137,7 @@ class BpfLocalStorageBenchmark(BpfBenchBase):
     """BPF local storage benchmark (exercises irq save/restore)."""
 
     name = "bpf-local-storage"
+    description = "BPF local storage (irq save/restore)"
     bench_name = "local-storage-cache-seq-get"
 
     def run_once(self) -> dict[str, float]:
@@ -173,6 +177,7 @@ class BpfHashmapBenchmark(BpfBenchBase):
     """BPF hashmap full update benchmark (exercises spin lock)."""
 
     name = "bpf-hashmap"
+    description = "BPF hashmap update (spin lock)"
     bench_name = "bpf-hashmap-full-update"
     producers = max(1, (os.cpu_count() or 1) - 1)
 
@@ -218,5 +223,6 @@ class BpfKernelCountBenchmark(BpfBenchBase):
     """BPF in-kernel counting benchmark (baseline control)."""
 
     name = "bpf-kernel-count"
+    description = "BPF in-kernel counting (baseline)"
     bench_name = "trig-kernel-count"
     affinity = True

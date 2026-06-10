@@ -12,6 +12,7 @@ class PerfBenchBenchmark(BenchmarkBase):
     """In-tree scheduler benchmarks using perf bench sched."""
 
     name = "perf-bench"
+    description = "In-tree scheduler benchmarks"
     default_iterations = 10
 
     def check_prerequisites(self) -> tuple[bool, str]:

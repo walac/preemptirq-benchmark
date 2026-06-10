@@ -11,6 +11,7 @@ class RtlaBenchmark(BenchmarkBase):
     """RT latency benchmark using rtla timerlat and osnoise."""
 
     name = "rtla"
+    description = "RT latency (timerlat + osnoise)"
     default_iterations = 30
 
     def check_prerequisites(self) -> tuple[bool, str]:

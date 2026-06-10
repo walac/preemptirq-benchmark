@@ -14,6 +14,7 @@ class Iperf3Benchmark(BenchmarkBase):
     """Network throughput and jitter benchmark using iperf3 over loopback."""
 
     name = "iperf3"
+    description = "Networking throughput and jitter"
     default_iterations = 10
 
     def __init__(self) -> None:

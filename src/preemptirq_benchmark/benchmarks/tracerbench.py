@@ -23,6 +23,7 @@ class TracerbenchBenchmark(BenchmarkBase):
     """
 
     name = "tracerbench"
+    description = "Kernel module micro-benchmark (CPU cycles)"
     default_iterations = 5
     supports_perf_stat = False
 

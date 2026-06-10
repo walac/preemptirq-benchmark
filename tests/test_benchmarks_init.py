@@ -15,6 +15,8 @@ from preemptirq_benchmark.benchmarks import (
     resolve_benchmarks,
 )
 
+import_all()
+
 
 class TestResolveBenchmarks:
     def test_no_flags_returns_all(self):
@@ -114,8 +116,10 @@ class TestRegisterAndGetBenchmark:
         del REGISTRY["fake-test-bench"]
 
     def test_descriptions_match_names(self):
+        import_all()
         for name in ALL_BENCHMARK_NAMES:
             assert name in BENCHMARK_DESCRIPTIONS, f"Missing description for {name}"
+            assert BENCHMARK_DESCRIPTIONS[name], f"Empty description for {name}"
 
 
 class TestCheckAllPrerequisites:
