@@ -5,6 +5,32 @@ Runs 15 benchmarks across different kernel subsystems, collects statistical
 results, saves JSON reports, and supports multi-report comparison with
 significance testing.
 
+The tool works by wrapping standard kernel testing tools (hackbench, fio,
+cyclictest, perf bench, etc.), running them with controlled iteration
+counts, and computing descriptive statistics with confidence intervals.
+Multi-report comparison uses the Mann-Whitney U test to flag statistically
+significant regressions or improvements. A separate `codegen-overhead`
+tool statically compares vmlinux binaries to measure per-function
+instruction count overhead from tracepoint instrumentation.
+
+## Quick start
+
+```bash
+# Install uv if not already present
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and install
+git clone https://github.com/walac/preemptirq-benchmark.git
+cd preemptirq-benchmark
+uv sync
+
+# Run all benchmarks (skips those with unmet prerequisites)
+sudo uv run preemptirq-benchmark run
+
+# Compare a baseline against a patched kernel
+uv run preemptirq-benchmark compare baseline.json patched.json
+```
+
 ## Benchmarks
 
 | Name | Focus | Default Iterations |
@@ -65,8 +91,12 @@ The `kernel-compile` benchmark also requires kernel build dependencies
 
 ## Installation
 
+[uv](https://github.com/astral-sh/uv) is a fast Python package manager
+that creates an isolated virtual environment automatically.
+
 ```bash
-uv sync
+curl -LsSf https://astral.sh/uv/install.sh | sh  # install uv
+uv sync                                            # install dependencies
 ```
 
 ## Usage
@@ -168,14 +198,27 @@ uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
 # Dump disassembly of specific functions for manual inspection
 uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
     --functions=schedule,__switch_to --output-asm-dir asm/
+
+# Only dump assembly, skip the comparison analysis
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --functions=schedule --no-analysis
+
+# Export as plain text or JSON
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target --format txt
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target --format json
+
+# Override objdump options (e.g. interleave source)
+uv run codegen-overhead --base vmlinux.base --target vmlinux.target \
+    --objdump-extra-args='-S'
 ```
 
 Functions that trigger inlining-difference heuristics are marked with `*`
 in the output. Use `--filter-inlining` to exclude them instead.
 
-## Output formats (show and compare)
+## Output formats
 
-The `--format` option is available on the `show` and `compare` subcommands.
+The `--format` option is available on the `show`, `compare`, and
+`codegen-overhead` subcommands.
 
 Use `-o`/`--output` to write the output directly to a file. The format
 is automatically inferred from the file extension (`.txt`, `.md`,
@@ -221,8 +264,17 @@ Comparisons include:
 # Install with dev dependencies
 uv sync
 
+# Run tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov --cov-report=term-missing
+
 # Run linter
 uv run ruff check src/
+
+# Run formatter check
+uv run black --check -l 100 src/
 
 # Run type checker
 uv run pyright src/
