@@ -22,7 +22,18 @@ dev = [
     "pyright>=1.1",
     "ruff>=0.8",
     "black>=24.0",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["preemptirq_benchmark"]
+
+[tool.coverage.report]
+show_missing = true
 
 [build-system]
 requires = ["uv_build>=0.11.6,<0.12.0"]
