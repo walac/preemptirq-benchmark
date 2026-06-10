@@ -76,7 +76,9 @@ class TestBuildReport:
 
     def test_multiple_benchmarks(self):
         r1 = make_result(name="hackbench")
-        r2 = make_result(name="fio", metrics={"iops": [5000.0, 5100.0, 4900.0]}, units={"iops": "ops/s"})
+        r2 = make_result(
+            name="fio", metrics={"iops": [5000.0, 5100.0, 4900.0]}, units={"iops": "ops/s"}
+        )
         report = build_report([r1, r2])
 
         assert report["benchmarks_run"] == ["hackbench", "fio"]
