@@ -1,7 +1,7 @@
 # preemptirq-benchmark
 
 Benchmark suite for measuring Linux kernel preemptirq tracepoint overhead.
-Runs 9 benchmarks across different kernel subsystems, collects statistical
+Runs 15 benchmarks across different kernel subsystems, collects statistical
 results, saves JSON reports, and supports multi-report comparison with
 significance testing.
 
@@ -18,6 +18,12 @@ significance testing.
 | kernel-compile | Kernel build throughput (make -j) | 10 |
 | rtla | RT latency (timerlat + osnoise) | 30 |
 | tracerbench | Kernel module micro-benchmark (CPU cycles) | 5 |
+| bpf-fentry | BPF fentry trampoline overhead | 5 |
+| bpf-tp | BPF tracepoint overhead | 5 |
+| bpf-kprobe | BPF kprobe overhead | 5 |
+| bpf-local-storage | BPF local storage (irq save/restore) | 5 |
+| bpf-hashmap | BPF hashmap update (spin lock) | 5 |
+| bpf-kernel-count | BPF in-kernel counting (baseline) | 5 |
 
 ## Requirements
 
@@ -25,9 +31,11 @@ significance testing.
 - [uv](https://github.com/astral-sh/uv) package manager
 - Linux with the benchmark tools installed (see below)
 - Root access for benchmarks that require it (fio, cyclictest, rtla, tracerbench,
-  perf stat)
+  perf stat, BPF benchmarks)
 - The [`tracerbench`](https://github.com/walac/tracer-benchmark/) kernel module for the tracerbench benchmark
 - A configured kernel source tree for the kernel-compile benchmark
+- The BPF selftests `bench` binary for BPF benchmarks (build from kernel source:
+  `make -C tools/testing/selftests/bpf bench`)
 
 ### RPM packages (Fedora/RHEL)
 
@@ -79,7 +87,11 @@ sudo uv run preemptirq-benchmark run --exclude=kernel-compile,rtla
 sudo uv run preemptirq-benchmark run --include=hackbench --iterations 20
 
 # Collect hardware counters alongside benchmarks
+# Note: silently skipped by tracerbench and bpf-* benchmarks
 sudo uv run preemptirq-benchmark run --include=hackbench --perf-stat
+
+# Use a 99% confidence interval instead of the default 95%
+sudo uv run preemptirq-benchmark run --include=hackbench --confidence-interval 99
 
 # Include kernel-compile (requires --kernel-src)
 sudo uv run preemptirq-benchmark run --include=kernel-compile --kernel-src /path/to/linux
@@ -87,6 +99,13 @@ sudo uv run preemptirq-benchmark run --include=kernel-compile --kernel-src /path
 # Configure tracerbench module parameters
 sudo uv run preemptirq-benchmark run --include=tracerbench \
     --samples 50000 --highest 250 --percentile 99
+
+# Run BPF benchmarks (requires bench binary from kernel selftests)
+sudo uv run preemptirq-benchmark run --include=bpf-fentry,bpf-tp,bpf-kprobe
+
+# Specify a custom path to the bench binary
+sudo uv run preemptirq-benchmark run --include=bpf-fentry \
+    --bpf-bench /path/to/bench
 ```
 
 The `run` subcommand saves a JSON report to the current directory
@@ -177,7 +196,8 @@ Each metric is reported with:
 - **Mean** -- arithmetic mean across iterations
 - **Median** -- middle value
 - **StdDev** -- sample standard deviation (Bessel's correction)
-- **95% CI** -- confidence interval using t-distribution
+- **CI** -- confidence interval using t-distribution (default 95%, configurable
+  via `--confidence-interval`)
 
 Comparisons include:
 

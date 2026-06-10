@@ -74,8 +74,8 @@ GEMINI.md
 .DS_Store
 Thumbs.db
 
-# runtime produced files
-*.json
+# runtime produced benchmark reports
+preemptirq-benchmark-*.json
 
 # apogee-managed-begin
 # Apogee lifecycle artifacts (private working state)
