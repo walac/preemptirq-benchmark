@@ -81,7 +81,7 @@ class TestRegisterAndGetBenchmark:
         # steady-state (registry is populated), not that a fresh import
         # transitions it from empty.
         import_all()
-        assert len(REGISTRY) > 0
+        assert len(REGISTRY) >= len(ALL_BENCHMARK_NAMES)
         assert "hackbench" in REGISTRY
 
     def test_get_benchmark_returns_instance(self):

@@ -267,17 +267,15 @@ def import_all() -> None:
     """Import all benchmark modules to trigger registration.
 
     Must be called once before :func:`get_benchmark` to ensure all
-    :func:`register`-decorated classes are loaded.
+    :func:`register`-decorated classes are loaded.  Discovers modules
+    automatically from the package directory instead of maintaining a
+    hardcoded import list.
     """
-    from preemptirq_benchmark.benchmarks import (  # noqa: F401
-        bpf_bench,
-        cyclictest,
-        fio,
-        hackbench,
-        iperf3_bench,
-        kernel_compile,
-        perf_bench,
-        rtla,
-        stress_ng,
-        tracerbench,
-    )
+    import importlib
+    import pkgutil
+
+    import preemptirq_benchmark.benchmarks as pkg
+
+    for info in pkgutil.iter_modules(pkg.__path__):
+        if not info.ispkg and not info.name.startswith("_"):
+            importlib.import_module(f"{pkg.__name__}.{info.name}")

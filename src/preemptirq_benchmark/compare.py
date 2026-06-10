@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,49 @@ from preemptirq_benchmark.stats import (
     format_delta_pct,
     mann_whitney,
 )
+
+
+def _fmt_metric(mdata: dict[str, Any]) -> str:
+    unit = mdata.get("unit", "")
+    suffix = f" {unit}" if unit else ""
+    return f"{mdata['mean']:.2f}{suffix}"
+
+
+def _build_comparison_rows(
+    base: dict[str, Any],
+    others: list[dict[str, Any]],
+    bench_name: str,
+    section: str,
+    *,
+    label_fn: Callable[[str], str],
+    format_base: Callable[[dict[str, Any]], str],
+    format_delta: Callable[[dict[str, Any], dict[str, Any]], str],
+    format_abs: Callable[[dict[str, Any]], str],
+) -> list[list[str]]:
+    base_section = base.get("results", {}).get(bench_name, {}).get(section, {})
+    all_keys = set(base_section.keys())
+    for r in others:
+        all_keys |= set(r.get("results", {}).get(bench_name, {}).get(section, {}).keys())
+
+    rows: list[list[str]] = []
+    for key in sorted(all_keys):
+        row = [label_fn(key)]
+        base_data = base_section.get(key)
+        row.append(format_base(base_data) if base_data else "N/A")
+
+        for other in others:
+            other_data = (
+                other.get("results", {}).get(bench_name, {}).get(section, {}).get(key)
+            )
+            if other_data is None:
+                row.append("N/A")
+            elif base_data is None:
+                row.append(format_abs(other_data))
+            else:
+                row.append(format_delta(base_data, other_data))
+
+        rows.append(row)
+    return rows
 
 
 def compare_reports(
@@ -58,86 +102,29 @@ def compare_reports(
         headers = ["Metric"] + labels
         rows: list[list[str]] = []
 
-        base_metrics = base.get("results", {}).get(bench_name, {}).get("metrics", {})
-
-        # We need a list of all metrics across all reports for this benchmark
-        all_metrics = set(base_metrics.keys())
-        for r in reports[1:]:
-            all_metrics |= set(r.get("results", {}).get(bench_name, {}).get("metrics", {}).keys())
-
-        for metric_name in sorted(all_metrics):
-            row = [metric_name]
-
-            base_mdata = base_metrics.get(metric_name)
-            if base_mdata:
-                unit = base_mdata.get("unit", "")
-                suffix = f" {unit}" if unit else ""
-                row.append(f"{base_mdata['mean']:.2f}{suffix}")
-                base_values = base_mdata.get("values", [])
-            else:
-                row.append("N/A")
-                base_values = []
-
-            for other in reports[1:]:
-                other_mdata = (
-                    other.get("results", {}).get(bench_name, {}).get("metrics", {}).get(metric_name)
-                )
-                if other_mdata is None:
-                    row.append("N/A")
-                    continue
-
-                if base_mdata is None:
-                    unit = other_mdata.get("unit", "")
-                    suffix = f" {unit}" if unit else ""
-                    row.append(f"{other_mdata['mean']:.2f}{suffix}")
-                    continue
-
-                pct = compute_delta_pct(base_mdata["mean"], other_mdata["mean"])
-                other_values = other_mdata.get("values", [])
-                sig = mann_whitney(base_values, other_values)
-                row.append(f"{format_delta_pct(pct)} {sig.label}")
-
-            rows.append(row)
-
-        base_perf = base.get("results", {}).get(bench_name, {}).get("perf_counters", {})
-        all_perf = set(base_perf.keys())
-        for r in reports[1:]:
-            all_perf |= set(
-                r.get("results", {}).get(bench_name, {}).get("perf_counters", {}).keys()
+        rows.extend(
+            _build_comparison_rows(
+                base, reports[1:], bench_name, "metrics",
+                label_fn=lambda name: name,
+                format_base=_fmt_metric,
+                format_delta=lambda bd, od: (
+                    f"{format_delta_pct(compute_delta_pct(bd['mean'], od['mean']))} "
+                    f"{mann_whitney(bd.get('values', []), od.get('values', [])).label}"
+                ),
+                format_abs=_fmt_metric,
             )
-
-        if all_perf:
-            for cname in sorted(all_perf):
-                row = [f"perf:{cname}"]
-                base_cdata = base_perf.get(cname)
-
-                if base_cdata:
-                    row.append(f"{base_cdata['mean']:.0f}")
-                else:
-                    row.append("N/A")
-
-                for other in reports[1:]:
-                    other_cdata = (
-                        other.get("results", {})
-                        .get(bench_name, {})
-                        .get("perf_counters", {})
-                        .get(cname)
-                    )
-                    if other_cdata is None:
-                        row.append("N/A")
-                        continue
-
-                    if base_cdata is None:
-                        row.append(f"{other_cdata['mean']:.0f}")
-                        continue
-
-                    pct = compute_delta_pct(
-                        base_cdata["mean"],
-                        other_cdata["mean"],
-                    )
-                    row.append(f"{format_delta_pct(pct)}")
-
-                rows.append(row)
+        )
+        rows.extend(
+            _build_comparison_rows(
+                base, reports[1:], bench_name, "perf_counters",
+                label_fn=lambda name: f"perf:{name}",
+                format_base=lambda d: f"{d['mean']:.0f}",
+                format_delta=lambda bd, od: format_delta_pct(
+                    compute_delta_pct(bd["mean"], od["mean"])
+                ),
+                format_abs=lambda d: f"{d['mean']:.0f}",
+            )
+        )
 
         print(format_table(title, headers, rows, fmt))
 
