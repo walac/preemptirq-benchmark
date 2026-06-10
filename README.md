@@ -270,11 +270,11 @@ uv run pytest
 # Run tests with coverage
 uv run pytest --cov --cov-report=term-missing
 
-# Run linter
-uv run ruff check src/
-
 # Run formatter check
-uv run black --check -l 100 src/
+uv run black --check src/
+
+# Run import sort check
+uv run isort --check-only --diff src/
 
 # Run type checker
 uv run pyright src/

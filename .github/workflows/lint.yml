@@ -3,6 +3,7 @@ name: Lint
 on:
   push:
   pull_request:
+    branches: [master]
 
 jobs:
   lint:
@@ -19,11 +20,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Run ruff check
-        run: uv run ruff check src/
-
       - name: Run black --check
-        run: uv run black --check -l 100 src/
+        run: uv run black --check src/
+
+      - name: Run isort --check
+        run: uv run isort --check-only --diff src/
 
       - name: Run pyright
         run: uv run pyright src/
