@@ -8,7 +8,7 @@ from typing import Any
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.report import load_report
-from preemptirq_benchmark.types import MetricData, Report
+from preemptirq_benchmark.types import Report
 from preemptirq_benchmark.stats import (
     compute_delta_pct,
     format_delta_pct,
@@ -16,7 +16,7 @@ from preemptirq_benchmark.stats import (
 )
 
 
-def _fmt_metric(mdata: MetricData) -> str:
+def _fmt_metric(mdata: dict[str, Any]) -> str:
     unit = mdata.get("unit", "")
     suffix = f" {unit}" if unit else ""
     return f"{mdata['mean']:.2f}{suffix}"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, TypedDict
 
 
-class MetricData(TypedDict, total=False):
+class MetricData(TypedDict):
     unit: str
     values: list[float]
     mean: float
@@ -21,10 +21,13 @@ class PerfCounterData(TypedDict):
     sample_count: int
 
 
-class BenchmarkEntry(TypedDict, total=False):
+class _BenchmarkEntryRequired(TypedDict):
     iterations: int
     metrics: dict[str, MetricData]
     perf_counters: dict[str, PerfCounterData]
+
+
+class BenchmarkEntry(_BenchmarkEntryRequired, total=False):
     config: dict[str, Any]
 
 

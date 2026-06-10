@@ -90,7 +90,7 @@ class TestBuildReport:
         config = {"nr_samples": 50000, "nr_highest": 250}
         report = build_report([result], tracerbench_config=config)
 
-        assert report["results"]["tracerbench"]["config"] == config
+        assert report["results"]["tracerbench"].get("config") == config
 
     def test_empty_values_skipped(self):
         result = make_result(metrics={"good": [1.0, 2.0], "empty": []})

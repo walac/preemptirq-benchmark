@@ -7,6 +7,7 @@ import pytest
 from preemptirq_benchmark.benchmarks import BenchmarkResult
 from preemptirq_benchmark.compare import build_comparison_data, compare_reports
 from preemptirq_benchmark.report import build_report, save_report
+from preemptirq_benchmark.types import Report
 
 
 def make_report(
@@ -14,7 +15,7 @@ def make_report(
     values: list[float] | None = None,
     units: dict[str, str] | None = None,
     perf_counters: dict[str, list[int]] | None = None,
-) -> dict:
+) -> Report:
     result = BenchmarkResult(
         name=name,
         metrics={"time_seconds": values or [1.0, 1.1, 1.2]},

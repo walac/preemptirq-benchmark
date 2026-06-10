@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import platform
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,7 +12,7 @@ from preemptirq_benchmark.benchmarks import (
 )
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.stats import compute_stats
-from preemptirq_benchmark.types import BenchmarkEntry, Report
+from preemptirq_benchmark.types import BenchmarkEntry, MetricData, Report
 
 REPORT_VERSION = 3
 
@@ -62,11 +61,17 @@ def build_report(
                 continue
             stats = compute_stats(values, ci_pct=ci_pct)
             unit = result.units.get(metric_name, "")
-            entry["metrics"][metric_name] = {
-                "unit": unit,
-                "values": values,
-                **asdict(stats),
-            }
+            entry["metrics"][metric_name] = MetricData(
+                unit=unit,
+                values=values,
+                mean=stats.mean,
+                median=stats.median,
+                stddev=stats.stddev,
+                ci_low=stats.ci_low,
+                ci_high=stats.ci_high,
+                ci_pct=stats.ci_pct,
+                n=stats.n,
+            )
 
         for counter_name, counts in result.perf_counters.items():
             if not counts:
