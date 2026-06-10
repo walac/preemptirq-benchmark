@@ -20,12 +20,12 @@ from collections import defaultdict
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-from preemptirq_benchmark.formatters import format_table
-
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
 from rich.table import Table
+
+from preemptirq_benchmark.formatters import format_table
 
 # Trace helper symbols injected by the preemptirq patch series, mapped to
 # short labels used in the breakdown column of the report.

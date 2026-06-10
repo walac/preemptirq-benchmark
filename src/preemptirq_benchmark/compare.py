@@ -8,12 +8,12 @@ from typing import Any
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.report import load_report
-from preemptirq_benchmark.types import Report
 from preemptirq_benchmark.stats import (
     compute_delta_pct,
     format_delta_pct,
     mann_whitney,
 )
+from preemptirq_benchmark.types import Report
 
 
 def _fmt_metric(mdata: dict[str, Any]) -> str:
