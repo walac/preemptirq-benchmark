@@ -127,6 +127,7 @@ class CompareRow:
     diff: int
     pct: float
     total_calls: int
+    avg_per_call: float
     breakdown: str
     inlining_suspect: bool = False
 
@@ -320,7 +321,8 @@ def build_comparison(
         if suspect:
             flagged_inlining += 1
 
-        rows.append(CompareRow(name, base, target, diff, pct, tc, td.breakdown(), suspect))
+        apc = diff / tc if tc > 0 else 0.0
+        rows.append(CompareRow(name, base, target, diff, pct, tc, apc, td.breakdown(), suspect))
 
     total_base = sum(r.base_insns for r in rows)
     total_target = sum(r.target_insns for r in rows)
@@ -388,8 +390,8 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
             "ir=irq\\_restore, sh=safe\\_halt.\n\n"
         )
 
-        f.write("| Function | Base | Trace | Diff | Diff% | Calls | Breakdown |\n")
-        f.write("|:---------|-----:|------:|-----:|------:|------:|:----------|\n")
+        f.write("| Function | Base | Trace | Diff | Diff% | Calls | Avg/Call | Breakdown |\n")
+        f.write("|:---------|-----:|------:|-----:|------:|------:|--------:|:----------|\n")
 
         has_suspects = False
         for r in rows:
@@ -398,10 +400,11 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
                 fn += " \\*"
                 has_suspects = True
             sign = "+" if r.diff >= 0 else ""
+            avg_call = f"{r.avg_per_call:.1f}" if r.total_calls > 0 else "-"
             f.write(
                 f"| {fn} | {r.base_insns} | {r.target_insns} "
                 f"| {sign}{r.diff} | {r.pct:+.1f}% "
-                f"| {r.total_calls} | {r.breakdown} |\n"
+                f"| {r.total_calls} | {avg_call} | {r.breakdown} |\n"
             )
 
         if has_suspects:
@@ -461,6 +464,7 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
     table.add_column("Diff", justify="right")
     table.add_column("Diff%", justify="right")
     table.add_column("Calls", justify="right")
+    table.add_column("Avg/Call", justify="right")
     table.add_column("Breakdown", style="dim")
 
     for r in rows:
@@ -475,6 +479,7 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
 
         fn = f"{r.name} *" if r.inlining_suspect else r.name
         sign = "+" if r.diff >= 0 else ""
+        avg_call = f"{r.avg_per_call:.1f}" if r.total_calls > 0 else "-"
         table.add_row(
             fn,
             str(r.base_insns),
@@ -482,6 +487,7 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
             f"[{diff_style}]{sign}{r.diff}[/]",
             f"[{diff_style}]{r.pct:+.1f}%[/]",
             str(r.total_calls),
+            avg_call,
             r.breakdown,
         )
 
@@ -613,11 +619,12 @@ def dump_functions(
 def _rows_to_table_data(
     rows: list[CompareRow],
 ) -> tuple[list[str], list[list[str]]]:
-    headers = ["Function", "Base", "Trace", "Diff", "Diff%", "Calls", "Breakdown"]
+    headers = ["Function", "Base", "Trace", "Diff", "Diff%", "Calls", "Avg/Call", "Breakdown"]
     table_rows = []
     for r in rows:
         fn = f"{r.name} *" if r.inlining_suspect else r.name
         sign = "+" if r.diff >= 0 else ""
+        avg_call = f"{r.avg_per_call:.1f}" if r.total_calls > 0 else "-"
         table_rows.append(
             [
                 fn,
@@ -626,6 +633,7 @@ def _rows_to_table_data(
                 f"{sign}{r.diff}",
                 f"{r.pct:+.1f}%",
                 str(r.total_calls),
+                avg_call,
                 r.breakdown,
             ]
         )
@@ -673,6 +681,7 @@ def output_json(rows: list[CompareRow], summary: Summary) -> str:
                 "diff": r.diff,
                 "pct": round(r.pct, 1),
                 "total_calls": r.total_calls,
+                "avg_per_call": round(r.avg_per_call, 1),
                 "breakdown": r.breakdown,
                 "inlining_suspect": r.inlining_suspect,
             }
@@ -758,8 +767,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--sort",
         default="name",
-        choices=["name", "diff", "pct"],
-        help="Sort results by function name (ascending), absolute diff, or %% change (default: name)",
+        choices=["name", "diff", "pct", "avg"],
+        help="Sort results by function name (ascending), absolute diff, %% change, or avg overhead per call (default: name)",
     )
     parser.add_argument(
         "--filter-inlining",
@@ -863,6 +872,7 @@ def main() -> None:
         "name": lambda r: r.name,
         "diff": lambda r: -abs(r.diff),
         "pct": lambda r: -abs(r.pct),
+        "avg": lambda r: -abs(r.avg_per_call),
     }
     rows.sort(key=sort_keys[args.sort])
 
