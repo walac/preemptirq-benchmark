@@ -80,12 +80,32 @@ INSN_RE = re.compile(r"^\s*[0-9a-f]+:")
 # in group 1 and checked against TRACE_HELPERS.
 CALL_RE = re.compile(r"(?:callq?|bl|brasl|jalr?)\b.*<([^>]+)>")
 
+# NOP_RE — matches x86 NOP instruction mnemonics used for alignment
+# padding between functions.  These include single-byte ``nop``,
+# multi-byte ``nopl``/``nopw`` variants, prefixed forms (``data16``,
+# ``cs``), and the two-byte ``xchg %ax,%ax`` encoding.
+#
+# Used to strip trailing alignment padding from per-function instruction
+# counts — the linker inserts NOPs between function boundaries to satisfy
+# alignment constraints, and these must not inflate the count.
+#
+# Anchored with ^ to match only at the start of the mnemonic field
+# (callers must strip the address prefix before matching).  Without
+# anchoring, a ``search()`` over the full objdump line would false-
+# positive on symbol names containing "nop" (e.g. ``<__kmalloc_noprof>``).
+NOP_RE = re.compile(r"^(?:data16\s+)*(?:cs\s+)?nop[lwq]?\b|^xchg\s+%([a-d]x),%\1")
+
 # Inlining-difference thresholds — functions exceeding these are flagged
 # as likely artefacts of unrelated compiler inlining decisions rather
 # than tracepoint overhead (excluded when --filter-inlining is used).
 MAX_DIFF_PER_CALL = 20
 MAX_PCT_CHANGE = 100
 MAX_SHRINK_PER_CALL = 10
+# Minimum base instruction count for the percentage-change heuristic.
+# Functions smaller than this are not flagged by MAX_PCT_CHANGE alone,
+# because a 3-instruction function gaining 4 instructions (+133%) is
+# normal tracepoint overhead, not an inlining artefact.
+MIN_BASE_FOR_PCT_CHECK = 10
 
 DEFAULT_OBJDUMP_ARGS: tuple[str, ...] = ("-d", "--no-show-raw-insn")
 
@@ -233,8 +253,10 @@ def extract_function_data(
     result: dict[str, FuncTrace] = {}
     current_func: str | None = None
     current_data = FuncTrace()
+    trailing_nops = 0
 
     def save_current() -> None:
+        current_data.insn_count -= trailing_nops
         if current_func and current_data.insn_count > 0:
             if not track_trace_calls or current_data.total_calls > 0:
                 result[current_func] = current_data
@@ -245,11 +267,18 @@ def extract_function_data(
             save_current()
             current_func = m.group(1)
             current_data = FuncTrace()
+            trailing_nops = 0
             progress.update(task, advance=1)
             continue
 
         if current_func and INSN_RE.match(line):
             current_data.insn_count += 1
+            tab = line.find("\t")
+            mnemonic = line[tab + 1 :] if tab >= 0 else line
+            if NOP_RE.match(mnemonic):
+                trailing_nops += 1
+            else:
+                trailing_nops = 0
             if track_trace_calls:
                 cm = CALL_RE.search(line)
                 if cm and cm.group(1) in TRACE_HELPERS:
@@ -309,7 +338,7 @@ def build_comparison(
         suspect = False
         if tc > 0 and abs(diff) / tc > MAX_DIFF_PER_CALL:
             suspect = True
-        elif abs(pct) > MAX_PCT_CHANGE:
+        elif abs(pct) > MAX_PCT_CHANGE and base >= MIN_BASE_FOR_PCT_CHECK:
             suspect = True
         elif diff < 0 and abs(diff) > tc * MAX_SHRINK_PER_CALL:
             suspect = True
