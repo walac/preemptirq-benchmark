@@ -361,7 +361,9 @@ def build_comparison(
     total_calls = sum(r.total_calls for r in rows)
     avg_per_call = total_diff / total_calls if total_calls else 0
 
-    per_call_vals = sorted(r.diff / r.total_calls for r in rows if r.total_calls > 0)
+    per_call_vals = sorted(
+        r.diff / r.total_calls for r in rows if r.total_calls > 0 and not r.inlining_suspect
+    )
     n = len(per_call_vals)
     p25 = median = p75 = p95 = 0.0
     if n >= 2:
