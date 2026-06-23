@@ -170,6 +170,7 @@ class Summary:
     dist_p25: float
     dist_median: float
     dist_p75: float
+    dist_p95: float
     dist_max: float
 
 
@@ -362,12 +363,12 @@ def build_comparison(
 
     per_call_vals = sorted(r.diff / r.total_calls for r in rows if r.total_calls > 0)
     n = len(per_call_vals)
-    p25 = median = p75 = 0.0
+    p25 = median = p75 = p95 = 0.0
     if n >= 2:
-        q = statistics.quantiles(per_call_vals, n=4)
-        p25, median, p75 = q[0], q[1], q[2]
+        q = statistics.quantiles(per_call_vals, n=20)
+        p25, median, p75, p95 = q[4], q[9], q[14], q[18]
     elif n == 1:
-        p25 = median = p75 = per_call_vals[0]
+        p25 = median = p75 = p95 = per_call_vals[0]
 
     summary = Summary(
         functions_analyzed=len(rows),
@@ -384,6 +385,7 @@ def build_comparison(
         dist_p25=p25,
         dist_median=median,
         dist_p75=p75,
+        dist_p95=p95,
         dist_max=per_call_vals[-1] if n else 0,
     )
 
@@ -462,6 +464,7 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
         f.write(f"| P25 | {s.dist_p25:.1f} |\n")
         f.write(f"| Median | {s.dist_median:.1f} |\n")
         f.write(f"| P75 | {s.dist_p75:.1f} |\n")
+        f.write(f"| P95 | {s.dist_p95:.1f} |\n")
         f.write(f"| Max | {s.dist_max:.1f} |\n")
 
 
@@ -548,6 +551,7 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
         f"P25: {s.dist_p25:.1f}  "
         f"[bold]Median: {s.dist_median:.1f}[/]  "
         f"P75: {s.dist_p75:.1f}  "
+        f"P95: {s.dist_p95:.1f}  "
         f"Max: {s.dist_max:.1f}"
     )
     console.print(Panel(dist_text, title="Overhead Distribution (instructions/call)"))
@@ -732,6 +736,7 @@ def output_json(rows: list[CompareRow], summary: Summary) -> str:
                 "p25": summary.dist_p25,
                 "median": summary.dist_median,
                 "p75": summary.dist_p75,
+                "p95": summary.dist_p95,
                 "max": summary.dist_max,
             },
         },
