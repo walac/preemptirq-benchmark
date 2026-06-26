@@ -377,6 +377,12 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
     name = "bpf-lpm-trie-lookup"
     description = "BPF LPM trie lookup"
     bench_name = "lpm-trie-lookup"
+    nr_entries: int = 1000
+
+    def bench_cmd(self) -> list[str]:
+        cmd = super().bench_cmd()
+        cmd.extend(["--nr_entries", str(self.nr_entries)])
+        return cmd
 
     def run_once(self) -> dict[str, float]:
         """Run a single lpm-trie-lookup iteration.
