@@ -115,10 +115,10 @@ class TracerbenchBenchmark(BenchmarkBase):
         """Return unit mapping for tracerbench metrics.
 
         Returns:
-            Dict mapping each metric (12 total) to "ns".
+            Dict mapping each metric (12 total) to "cycles".
         """
         units: dict[str, str] = {}
         for test_type in TEST_TYPES:
             for stat_name in STAT_NAMES:
-                units[f"{test_type}/{stat_name}"] = "ns"
+                units[f"{test_type}/{stat_name}"] = "cycles"
         return units
