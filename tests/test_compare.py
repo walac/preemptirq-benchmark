@@ -96,8 +96,67 @@ class TestBuildComparisonData:
 
         nm = data["benchmarks"]["hackbench"]["new_metric"]
         assert nm["base_mean"] is None
+        assert nm["unit"] == "y"
         assert "other" in nm["comparisons"]
         assert "other_mean" in nm["comparisons"]["other"]
+
+    def test_missing_metric_in_base_takes_unit_from_first_report_that_has_it(self):
+        # Regression test: when two compared reports both carry a metric
+        # that's absent from the baseline, the unit must come from the
+        # first one (v1), not be overwritten by a later one (v2) that
+        # also happens to carry the metric -- otherwise this would be
+        # indistinguishable from a "last report wins" bug.
+        base = make_report(values=[1.0, 1.1, 1.2])
+
+        v1_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5], "new_metric": [2.0, 2.1]},
+            units={"time_seconds": "s", "new_metric": "y1"},
+            iterations=3,
+        )
+        v1 = build_report([v1_result])
+
+        v2_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.6, 1.7, 1.8], "new_metric": [2.2, 2.3]},
+            units={"time_seconds": "s", "new_metric": "y2"},
+            iterations=3,
+        )
+        v2 = build_report([v2_result])
+
+        data = build_comparison_data([base, v1, v2], ["base", "v1", "v2"])
+
+        nm = data["benchmarks"]["hackbench"]["new_metric"]
+        assert nm["base_mean"] is None
+        assert nm["unit"] == "y1"
+
+    def test_empty_base_unit_not_overridden_by_compared_report(self):
+        # Regression test: when a metric IS present in the baseline but
+        # its unit is legitimately empty (e.g. a raw count), the unit
+        # fallback must not kick in just because the stored value is
+        # falsy -- it's gated on the metric being entirely absent from
+        # the baseline, not on an empty unit string.
+        base_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.0, 1.1, 1.2], "count": [5.0, 6.0]},
+            units={"time_seconds": "s", "count": ""},
+            iterations=3,
+        )
+        base = build_report([base_result])
+
+        other_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5], "count": [7.0, 8.0]},
+            units={"time_seconds": "s", "count": "items"},
+            iterations=3,
+        )
+        other = build_report([other_result])
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        count = data["benchmarks"]["hackbench"]["count"]
+        assert count["base_mean"] is not None
+        assert count["unit"] == ""
 
 
 class TestCompareReports:

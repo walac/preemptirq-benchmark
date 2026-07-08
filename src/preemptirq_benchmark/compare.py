@@ -169,9 +169,10 @@ def build_comparison_data(
 
         for metric_name in sorted(all_metrics):
             base_mdata = base_metrics.get(metric_name)
+            unit = base_mdata.get("unit", "") if base_mdata else ""
             metric_cmp: dict[str, Any] = {
                 "base_mean": base_mdata["mean"] if base_mdata else None,
-                "unit": base_mdata.get("unit", "") if base_mdata else "",
+                "unit": unit,
                 "comparisons": {},
             }
 
@@ -183,6 +184,12 @@ def build_comparison_data(
                 if other_mdata is None:
                     continue
                 if base_mdata is None:
+                    if not metric_cmp["unit"]:
+                        # Metric doesn't exist in the baseline at all, so
+                        # there's no base unit to report — take the first
+                        # non-empty unit among compared reports instead of
+                        # leaving it blank.
+                        metric_cmp["unit"] = other_mdata.get("unit", "")
                     metric_cmp["comparisons"][labels[i + 1]] = {
                         "other_mean": other_mdata["mean"],
                     }
