@@ -75,10 +75,46 @@ INSN_RE = re.compile(r"^\s*[0-9a-f]+:")
 #   riscv: jal    ra,ffffffff80123456 <trace_local_irq_restore>
 #   riscv: jalr   ra,0(a5)  — no symbol, won't match (indirect call)
 #
-# The \b word boundary after the mnemonic prevents partial matches
-# (e.g. 'bla' or 'calls' won't match). The symbol name is captured
-# in group 1 and checked against TRACE_HELPERS.
-CALL_RE = re.compile(r"(?:callq?|bl|brasl|jalr?)\b.*<([^>]+)>")
+# Also matches unconditional tail-call jumps to a named symbol: GCC/Clang
+# routinely turn "return trace_helper(...);" into a sibling-call jump
+# instead of call+ret at -O2, and a trace helper reached only via such a
+# tail call would otherwise never be counted, silently dropping the whole
+# calling function from the report if that was its only trace reference:
+#
+#   x86:     jmp  ffffffff8151e020 <trace_local_irq_restore>
+#   x86:     jmpq ffffffff8151e020 <trace_local_irq_restore>
+#   arm/ppc: b    ffff800080123456 <trace_local_irq_restore>
+#   riscv:   j    ffffffff80123456 <trace_local_irq_restore>
+#
+# s390 also has its own unconditional-jump mnemonics ("j"/"jg"); "j" is
+# already covered above (identical to riscv's mnemonic, and a genuine
+# match there is correct, not a false positive). "jg" is deliberately
+# left out of the alternation: it collides with x86's real conditional
+# "jump if greater" mnemonic, which would misattribute an unrelated
+# conditional branch as a trace-helper call if it ever happened to
+# target a labeled address.
+#
+# The bare 'b'/'j' alternatives require a word boundary on BOTH sides —
+# leading as well as trailing. The trailing \b alone is not enough: since
+# this is a search() over the whole line rather than a match() anchored to
+# the start of the mnemonic, an unanchored 'b'/'j' can otherwise match the
+# tail end of a longer, unrelated token (e.g. the 'b' in 'jb', a real x86
+# conditional jump, or in a size-suffixed instruction like 'movb'/'cmpb'
+# that objdump may still annotate with a "# <symbol>" comment for an
+# unrelated RIP-relative operand). The leading \b anchors 'b'/'j' (and
+# every other alternative) to the start of a token, so only a standalone
+# mnemonic can match — 'jb' and 'movb' no longer match, while 'call',
+# 'jmp', a bare 'b', and a bare 'j' still do.
+#
+# 'b' additionally excludes a following '.' via a negative lookahead:
+# AArch64 spells its conditional branches "b.<cond>" (b.eq, b.ne, b.lt,
+# ...) — since '.' is a non-word character, \b treats "b.eq" the same as
+# "b " for boundary purposes, so without this exclusion the bare 'b'
+# alternative would match the 'b' in every AArch64 conditional branch.
+# The plain, dot-less unconditional "b <symbol>" form that AArch64 also
+# has is unaffected by the lookahead and still matches.
+# The symbol name is captured in group 1 and checked against TRACE_HELPERS.
+CALL_RE = re.compile(r"\b(?:callq?|bl|brasl|jalr?|jmpq?|b(?!\.)|j)\b.*<([^>]+)>")
 
 # NOP_RE — matches x86 NOP instruction mnemonics used for alignment
 # padding between functions.  These include single-byte ``nop``,
