@@ -927,6 +927,37 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def empty_result_reasons(summary: Summary, filter_inlining: bool) -> list[str]:
+    """Explain why a comparison produced zero reportable rows.
+
+    ``build_comparison`` can end up with no rows for more than one
+    reason, and they are not mutually exclusive. Enumerating the ones
+    that actually apply (rather than assuming inlining filtering is
+    always the cause) avoids sending the user to tune
+    MAX_DIFF_PER_CALL/MAX_PCT_CHANGE when the real problem is that no
+    function was present in both builds.
+
+    Best-effort, not exhaustive: a function present in both builds
+    with a zero base instruction count is also silently excluded from
+    ``rows``, but that case has no dedicated counter in ``Summary``, so
+    it only surfaces via the fallback reason below, and is omitted
+    entirely when it coincides with one of the two tracked causes.
+    """
+    reasons = []
+    if summary.functions_skipped_missing:
+        reasons.append(
+            f"{summary.functions_skipped_missing} function(s) not present in both builds"
+        )
+    if filter_inlining and summary.functions_filtered_inlining:
+        reasons.append(
+            f"{summary.functions_filtered_inlining} function(s) filtered by inlining "
+            "heuristics (consider relaxing MAX_DIFF_PER_CALL / MAX_PCT_CHANGE)"
+        )
+    if not reasons:
+        reasons.append("no function in target had a nonzero base instruction count")
+    return reasons
+
+
 def build_objdump_args(args: argparse.Namespace) -> list[str]:
     """Build the objdump argument list from CLI options."""
     if args.objdump_args is not None:
@@ -1034,10 +1065,8 @@ def main() -> None:
     rows.sort(key=sort_keys[args.sort])
 
     if not rows:
-        console.print(
-            "[bold yellow]Warning:[/] all functions were filtered by inlining "
-            "heuristics. Consider relaxing MAX_DIFF_PER_CALL / MAX_PCT_CHANGE."
-        )
+        reasons = empty_result_reasons(summary, args.filter_inlining)
+        console.print(f"[bold yellow]Warning:[/] no functions to report: {'; '.join(reasons)}.")
         raise SystemExit(1)
 
     fmt = args.fmt
