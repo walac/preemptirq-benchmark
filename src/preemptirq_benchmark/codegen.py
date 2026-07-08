@@ -95,6 +95,19 @@ CALL_RE = re.compile(r"(?:callq?|bl|brasl|jalr?)\b.*<([^>]+)>")
 # positive on symbol names containing "nop" (e.g. ``<__kmalloc_noprof>``).
 NOP_RE = re.compile(r"^(?:data16\s+)*(?:cs\s+)?nop[lwq]?\b|^xchg\s+%([a-d]x),%\1")
 
+# INT3_RE — matches the ``int3`` trap instruction, used as alignment
+# padding instead of ``nop`` on CONFIG_X86_KERNEL_IBT/CFI-hardened
+# kernels (so stray control flow into the gap traps rather than
+# executing silently). Handled separately from NOP_RE rather than
+# folded into it: CONFIG_SLS (straight-line-speculation mitigation,
+# `-mharden-sls=all`/`-mharden-sls=return`) makes the compiler emit a
+# *genuine*, real ``int3`` immediately after every `ret` — commonly
+# alongside IBT on hardened kernel configs — so a single trailing
+# ``int3`` cannot be assumed to be padding. Only a *second or later*
+# consecutive trailing ``int3`` is unambiguously alignment filler; the
+# first one is conservatively kept as a real instruction.
+INT3_RE = re.compile(r"^int3\b")
+
 # Inlining-difference thresholds — functions exceeding these are flagged
 # as likely artefacts of unrelated compiler inlining decisions rather
 # than tracepoint overhead (excluded when --filter-inlining is used).
@@ -160,6 +173,8 @@ class Summary:
     functions_skipped_missing: int
     functions_filtered_inlining: int
     functions_flagged_inlining: int
+    functions_ambiguous_target: int
+    functions_ambiguous_base: int
     total_base: int
     total_target: int
     total_diff: int
@@ -230,7 +245,7 @@ def extract_function_data(
     cross_compile: str = "",
     objdump_args: list[str] | None = None,
     track_trace_calls: bool = False,
-) -> dict[str, FuncTrace]:
+) -> tuple[dict[str, FuncTrace], int]:
     """Count instructions per function, optionally tracking trace helper calls.
 
     Single streaming pass over objdump output. For each function,
@@ -249,18 +264,39 @@ def extract_function_data(
             return all functions with their instruction counts.
 
     Returns:
-        Mapping of function name to its :class:`FuncTrace` data.
+        A tuple of (mapping of function name to its :class:`FuncTrace`
+        data, count of symbol names excluded because they were not
+        unique in this binary). Symbol names that appear more than once
+        — e.g. same-named ``static`` functions from different
+        translation units, which objdump prints as separate ``<name>:``
+        blocks at different addresses — cannot be reliably attributed
+        to a single instance, so all occurrences of such a name are
+        excluded from the result rather than one silently overwriting
+        another. A name is tracked as "seen" as soon as it produces a
+        real function body, independent of *track_trace_calls* — so an
+        ambiguous name is still detected even when only one of its
+        colliding instances happens to have a trace-helper call.
     """
     result: dict[str, FuncTrace] = {}
+    seen_names: set[str] = set()
+    ambiguous_names: set[str] = set()
     current_func: str | None = None
     current_data = FuncTrace()
     trailing_nops = 0
+    trailing_int3 = 0
 
     def save_current() -> None:
         current_data.insn_count -= trailing_nops
-        if current_func and current_data.insn_count > 0:
-            if not track_trace_calls or current_data.total_calls > 0:
-                result[current_func] = current_data
+        current_data.insn_count -= max(0, trailing_int3 - 1)
+        if not current_func or current_data.insn_count <= 0:
+            return
+        if current_func in seen_names:
+            ambiguous_names.add(current_func)
+            result.pop(current_func, None)
+            return
+        seen_names.add(current_func)
+        if not track_trace_calls or current_data.total_calls > 0:
+            result[current_func] = current_data
 
     for line in stream_objdump(vmlinux, cross_compile, objdump_args):
         m = FUNC_RE.match(line)
@@ -269,17 +305,28 @@ def extract_function_data(
             current_func = m.group(1)
             current_data = FuncTrace()
             trailing_nops = 0
+            trailing_int3 = 0
             progress.update(task, advance=1)
             continue
 
         if current_func and INSN_RE.match(line):
             current_data.insn_count += 1
-            tab = line.find("\t")
-            mnemonic = line[tab + 1 :] if tab >= 0 else line
-            if NOP_RE.match(mnemonic):
+            # rsplit handles both the default --no-show-raw-insn layout
+            # (one tab: "<addr>:\t<mnemonic>") and layouts that also show
+            # raw instruction bytes (two tabs: "<addr>:\t<bytes>\t<mnemonic>")
+            # — taking the field after the first tab would capture the raw
+            # bytes as part of the mnemonic in the latter case, which never
+            # matches NOP_RE and silently re-inflates the instruction count.
+            mnemonic = line.rsplit("\t", 1)[-1]
+            if INT3_RE.match(mnemonic):
+                trailing_int3 += 1
+                trailing_nops = 0
+            elif NOP_RE.match(mnemonic):
                 trailing_nops += 1
+                trailing_int3 = 0
             else:
                 trailing_nops = 0
+                trailing_int3 = 0
             if track_trace_calls:
                 cm = CALL_RE.search(line)
                 if cm and cm.group(1) in TRACE_HELPERS:
@@ -287,7 +334,7 @@ def extract_function_data(
 
     save_current()
 
-    return result
+    return result, len(ambiguous_names)
 
 
 def build_comparison(
@@ -295,6 +342,8 @@ def build_comparison(
     base_data: dict[str, FuncTrace],
     *,
     filter_inlining: bool = False,
+    target_ambiguous: int = 0,
+    base_ambiguous: int = 0,
 ) -> tuple[list[CompareRow], Summary]:
     """Join target and base data, compute deltas, and detect outliers.
 
@@ -311,6 +360,10 @@ def build_comparison(
         base_data: Per-function data from the base build.
         filter_inlining: When True, exclude inlining-suspect functions
             instead of marking them.
+        target_ambiguous: Count of target-build symbol names excluded
+            because they were not unique (see :func:`extract_function_data`).
+            Passed straight through into the returned summary.
+        base_ambiguous: Same, for the base build.
 
     Returns:
         A tuple of (comparison rows, aggregate summary statistics).
@@ -377,6 +430,8 @@ def build_comparison(
         functions_skipped_missing=skipped_missing,
         functions_filtered_inlining=skipped_inlining,
         functions_flagged_inlining=flagged_inlining,
+        functions_ambiguous_target=target_ambiguous,
+        functions_ambiguous_base=base_ambiguous,
         total_base=total_base,
         total_target=total_target,
         total_diff=total_diff,
@@ -453,6 +508,14 @@ def output_markdown(rows: list[CompareRow], summary: Summary, path: str) -> None
             f.write(f"| Functions filtered (inlining diffs) | {s.functions_filtered_inlining} |\n")
         if s.functions_flagged_inlining:
             f.write(f"| Functions flagged (inlining diffs) | {s.functions_flagged_inlining} |\n")
+        if s.functions_ambiguous_target:
+            f.write(
+                f"| Functions excluded (ambiguous name, target) | {s.functions_ambiguous_target} |\n"
+            )
+        if s.functions_ambiguous_base:
+            f.write(
+                f"| Functions excluded (ambiguous name, base) | {s.functions_ambiguous_base} |\n"
+            )
         f.write(f"| Total baseline instructions | {s.total_base:,} |\n")
         f.write(f"| Total traced instructions | {s.total_target:,} |\n")
         f.write(f"| Total difference | {s.total_diff:+,} ({s.total_pct:+.2f}%) |\n")
@@ -538,6 +601,14 @@ def output_terminal(rows: list[CompareRow], summary: Summary) -> None:
         summary_lines.append(f"[bold]Filtered (inlining diffs):[/] {s.functions_filtered_inlining}")
     if s.functions_flagged_inlining:
         summary_lines.append(f"[bold]Flagged (inlining diffs):[/] {s.functions_flagged_inlining}")
+    if s.functions_ambiguous_target:
+        summary_lines.append(
+            f"[bold]Excluded (ambiguous name, target):[/] {s.functions_ambiguous_target}"
+        )
+    if s.functions_ambiguous_base:
+        summary_lines.append(
+            f"[bold]Excluded (ambiguous name, base):[/] {s.functions_ambiguous_base}"
+        )
     summary_text = (
         "\n".join(summary_lines) + "\n"
         f"[bold]Total baseline instructions:[/] {s.total_base:,}\n"
@@ -685,6 +756,10 @@ def _summary_to_table_data(summary: Summary) -> tuple[list[str], list[list[str]]
         rows.append(["Filtered (inlining diffs)", str(s.functions_filtered_inlining)])
     if s.functions_flagged_inlining:
         rows.append(["Flagged (inlining diffs)", str(s.functions_flagged_inlining)])
+    if s.functions_ambiguous_target:
+        rows.append(["Excluded (ambiguous name, target)", str(s.functions_ambiguous_target)])
+    if s.functions_ambiguous_base:
+        rows.append(["Excluded (ambiguous name, base)", str(s.functions_ambiguous_base)])
     rows.extend(
         [
             ["Total baseline instructions", f"{s.total_base:,}"],
@@ -727,6 +802,8 @@ def output_json(rows: list[CompareRow], summary: Summary) -> str:
             "functions_skipped_missing": summary.functions_skipped_missing,
             "functions_filtered_inlining": summary.functions_filtered_inlining,
             "functions_flagged_inlining": summary.functions_flagged_inlining,
+            "functions_ambiguous_target": summary.functions_ambiguous_target,
+            "functions_ambiguous_base": summary.functions_ambiguous_base,
             "total_base": summary.total_base,
             "total_target": summary.total_target,
             "total_diff": summary.total_diff,
@@ -872,7 +949,7 @@ def main() -> None:
     ) as progress:
         try:
             task1 = progress.add_task("Disassembling target...", total=None)
-            target_data = extract_function_data(
+            target_data, target_ambiguous = extract_function_data(
                 args.target,
                 progress,
                 task1,
@@ -886,7 +963,9 @@ def main() -> None:
             progress.stop_task(task1)
 
             task2 = progress.add_task("Disassembling base...", total=None)
-            base_data = extract_function_data(args.base, progress, task2, xc, od_args)
+            base_data, base_ambiguous = extract_function_data(
+                args.base, progress, task2, xc, od_args
+            )
             progress.update(task2, description=f"Base: {len(base_data)} functions total")
             progress.stop_task(task2)
         except RuntimeError as e:
@@ -902,7 +981,13 @@ def main() -> None:
         )
         raise SystemExit(1)
 
-    rows, summary = build_comparison(target_data, base_data, filter_inlining=args.filter_inlining)
+    rows, summary = build_comparison(
+        target_data,
+        base_data,
+        filter_inlining=args.filter_inlining,
+        target_ambiguous=target_ambiguous,
+        base_ambiguous=base_ambiguous,
+    )
 
     sort_keys = {
         "name": lambda r: r.name,
