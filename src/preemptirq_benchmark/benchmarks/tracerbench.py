@@ -8,7 +8,7 @@ from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 DEBUGFS_BASE = Path("/sys/kernel/debug/tracerbench")
 
 TEST_TYPES = ["irq", "preempt", "irq_save"]
-STAT_NAMES = ["median", "average", "max", "percentile"]
+STAT_NAMES = ["median", "average", "max", "max_avg", "percentile"]
 
 
 @register
@@ -50,8 +50,10 @@ class TracerbenchBenchmark(BenchmarkBase):
         """Check that the tracerbench module is loaded, attempting modprobe.
 
         If the debugfs directory does not exist, attempts
-        ``modprobe tracerbench``.  If modprobe also fails, the
-        prerequisite check fails and the entire suite aborts.
+        ``modprobe tracerbench``.  If modprobe itself fails, that is
+        reported distinctly from the case where modprobe succeeds but
+        the expected debugfs directory still does not appear (e.g.
+        debugfs is not mounted).
 
         Returns:
             (True, "") if the module is loaded and debugfs is accessible,
@@ -65,13 +67,20 @@ class TracerbenchBenchmark(BenchmarkBase):
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0 and DEBUGFS_BASE.is_dir():
+        if result.returncode != 0:
+            return False, (
+                "tracerbench module not loaded and modprobe failed "
+                f"({result.stderr.strip()}). "
+                "Load manually: insmod tracerbench.ko"
+            )
+
+        if DEBUGFS_BASE.is_dir():
             return True, ""
 
         return False, (
-            "tracerbench module not loaded and modprobe failed "
-            f"({result.stderr.strip()}). "
-            "Load manually: insmod tracerbench.ko"
+            f"tracerbench module loaded but debugfs path {DEBUGFS_BASE} "
+            "was not found. Is debugfs mounted? Try: "
+            "mount -t debugfs none /sys/kernel/debug"
         )
 
     def setup(self) -> None:
@@ -90,7 +99,7 @@ class TracerbenchBenchmark(BenchmarkBase):
         """Trigger a benchmark run and read all results from debugfs.
 
         Writes "1" to the benchmark file, then reads 3 test types x
-        4 statistics = 12 values.
+        5 statistics = 15 values.
 
         Returns:
             Dict with keys like "irq_median", "preempt_average", etc.
@@ -115,7 +124,7 @@ class TracerbenchBenchmark(BenchmarkBase):
         """Return unit mapping for tracerbench metrics.
 
         Returns:
-            Dict mapping each metric (12 total) to "cycles".
+            Dict mapping each metric (15 total) to "cycles".
         """
         units: dict[str, str] = {}
         for test_type in TEST_TYPES:
