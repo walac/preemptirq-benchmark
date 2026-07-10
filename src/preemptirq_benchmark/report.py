@@ -5,6 +5,7 @@ import os
 import platform
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from preemptirq_benchmark.benchmarks import (
     BENCHMARK_DESCRIPTIONS,
@@ -112,14 +113,19 @@ def save_report(report: Report, output: str | None = None) -> Path:
     return path
 
 
-def load_report(path: str | Path) -> Report:
+def load_report(path: str | Path) -> dict[str, Any]:
     """Load a report from a JSON file.
+
+    The file may hold either a benchmark report from :func:`build_report`
+    or comparison data from :func:`preemptirq_benchmark.compare.build_comparison_data`;
+    callers are responsible for checking the shape before treating it as
+    one or the other.
 
     Args:
         path: Path to the JSON report file.
 
     Returns:
-        Parsed report dict.
+        Parsed JSON as a dict.
 
     Raises:
         SystemExit: If the file does not exist or is not valid JSON.

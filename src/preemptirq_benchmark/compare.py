@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
@@ -72,7 +72,8 @@ def compare_reports(
         fmt: Output format — "ascii", "txt", "markdown", or "json".
 
     Raises:
-        SystemExit: If fewer than 2 paths are given or files are invalid.
+        SystemExit: If fewer than 2 paths are given, a file is invalid,
+            or a file holds comparison output instead of a report.
     """
     if len(paths) < 2:
         raise SystemExit("Error: compare requires at least 2 report files")
@@ -80,7 +81,10 @@ def compare_reports(
     reports = []
     labels = []
     for p in paths:
-        reports.append(load_report(p))
+        data = load_report(p)
+        if is_comparison_data(data):
+            raise SystemExit(f"Error: {p} is comparison output, not a benchmark report")
+        reports.append(cast(Report, data))
         labels.append(Path(p).stem)
 
     if fmt == "json":
@@ -239,3 +243,80 @@ def print_comparison_header(
         for line in lines:
             print(line)
         print()
+
+
+def is_comparison_data(data: Mapping[str, Any]) -> bool:
+    """Return True if data is comparison JSON from :func:`build_comparison_data`.
+
+    Args:
+        data: A dict loaded from a report or comparison JSON file.
+
+    Returns:
+        True if the dict has the comparison shape rather than the
+        single-report shape produced by :func:`preemptirq_benchmark.report.build_report`.
+    """
+    return "compared" in data and "benchmarks" in data
+
+
+def display_comparison_data(data: Mapping[str, Any], fmt: str) -> None:
+    """Print previously saved comparison JSON as formatted tables.
+
+    This re-displays the output of :func:`build_comparison_data` (e.g.
+    from ``compare --format json``) without needing the original
+    reports, since the deltas and significance results are already
+    baked into the data.
+
+    Args:
+        data: Comparison dict as produced by :func:`build_comparison_data`.
+        fmt: Output format — "ascii", "txt", "markdown", or "json".
+    """
+    if fmt == "json":
+        print(json.dumps(data, indent=2))
+        return
+
+    base_label = data.get("base", "base")
+    compared_labels = data.get("compared", [])
+
+    lines = [
+        f"Base: {base_label}",
+        f"Compared: {', '.join(compared_labels)}",
+        "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
+    ]
+    if fmt == "markdown":
+        print("## Benchmark Comparison")
+        print()
+        for line in lines:
+            print(f"- {line}")
+        print()
+    else:
+        for line in lines:
+            print(line)
+        print()
+
+    for bench_name in sorted(data.get("benchmarks", {})):
+        bench_data = data["benchmarks"][bench_name]
+        desc = BENCHMARK_DESCRIPTIONS.get(bench_name, "")
+        title = f"{bench_name} ({desc})"
+        headers = ["Metric", base_label] + compared_labels
+        rows: list[list[str]] = []
+
+        for metric_name in sorted(bench_data):
+            mcmp = bench_data[metric_name]
+            unit = mcmp.get("unit", "")
+            suffix = f" {unit}" if unit else ""
+            base_mean = mcmp.get("base_mean")
+            row = [metric_name, f"{base_mean:.2f}{suffix}" if base_mean is not None else "N/A"]
+
+            comparisons = mcmp.get("comparisons", {})
+            for label in compared_labels:
+                entry = comparisons.get(label)
+                if entry is None:
+                    row.append("N/A")
+                elif "delta_pct" in entry:
+                    row.append(f"{format_delta_pct(entry['delta_pct'])} {entry['significant']}")
+                else:
+                    row.append(f"{entry['other_mean']:.2f}{suffix}")
+
+            rows.append(row)
+
+        print(format_table(title, headers, rows, fmt))

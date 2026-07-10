@@ -146,6 +146,28 @@ class TestCmdShow:
         content = (tmp_path / "output.md").read_text()
         assert "hackbench" in content
 
+    def test_shows_compare_output_without_crashing(self, tmp_path, capsys):
+        # Regression test: `show` on a file produced by `compare --format
+        # json` used to raise KeyError: 'hostname', since that JSON has no
+        # "hostname"/"results" keys at all -- it's a different shape than a
+        # normal report.
+        p1 = make_fixture_report(tmp_path / "a", [1.0, 1.1, 1.2])
+        p2 = make_fixture_report(tmp_path / "b", [1.3, 1.4, 1.5])
+
+        compare_args = argparse.Namespace(reports=[p1, p2], fmt="json", output=None)
+        cmd_compare(compare_args)
+        comparison_json = capsys.readouterr().out
+
+        compare_path = tmp_path / "compare.json"
+        compare_path.write_text(comparison_json)
+
+        show_args = argparse.Namespace(report=str(compare_path), fmt=None, output=None)
+        cmd_show(show_args)
+
+        captured = capsys.readouterr()
+        assert "Base:" in captured.out
+        assert "time_seconds" in captured.out
+
 
 class TestCmdCompare:
     def test_ascii_output(self, tmp_path, capsys):

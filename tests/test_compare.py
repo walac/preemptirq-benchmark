@@ -5,7 +5,12 @@ import json
 import pytest
 
 from preemptirq_benchmark.benchmarks import BenchmarkResult
-from preemptirq_benchmark.compare import build_comparison_data, compare_reports
+from preemptirq_benchmark.compare import (
+    build_comparison_data,
+    compare_reports,
+    display_comparison_data,
+    is_comparison_data,
+)
 from preemptirq_benchmark.report import build_report, save_report
 from preemptirq_benchmark.types import Report
 
@@ -159,10 +164,111 @@ class TestBuildComparisonData:
         assert count["unit"] == ""
 
 
+class TestIsComparisonData:
+    def test_comparison_data_detected(self):
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        assert is_comparison_data(data) is True
+
+    def test_report_not_comparison_data(self):
+        report = make_report()
+
+        assert is_comparison_data(report) is False
+
+
+class TestDisplayComparisonData:
+    def test_ascii_output(self, capsys):
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "ascii")
+
+        captured = capsys.readouterr()
+        assert "Base: baseline" in captured.out
+        assert "Compared: patched" in captured.out
+        assert "baseline" in captured.out
+        assert "patched" in captured.out
+        assert "time_seconds" in captured.out
+
+    def test_markdown_output(self, capsys):
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "markdown")
+
+        captured = capsys.readouterr()
+        assert "## Benchmark Comparison" in captured.out
+        assert "%" in captured.out
+
+    def test_json_output_round_trips(self, capsys):
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "json")
+
+        captured = capsys.readouterr()
+        assert json.loads(captured.out) == data
+
+    def test_metric_missing_from_base_shows_other_mean(self):
+        # Regression test: build_comparison_data omits "delta_pct" for
+        # metrics absent from the baseline (only "other_mean" is set),
+        # so display_comparison_data must not KeyError on "delta_pct".
+        base = make_report(values=[1.0, 1.1, 1.2])
+
+        other_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5], "new_metric": [2.0, 2.1]},
+            units={"time_seconds": "s", "new_metric": "y"},
+            iterations=3,
+        )
+        other = build_report([other_result])
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        display_comparison_data(data, "ascii")
+
+    def test_header_includes_base_and_compared_labels(self, capsys):
+        # Regression test: the header row must include the base label
+        # as its own column (not just the compared labels), otherwise
+        # it misaligns with the base-mean cell in each row.
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "txt")
+
+        captured = capsys.readouterr()
+        header_line = next(line for line in captured.out.splitlines() if "Metric" in line)
+        assert "baseline" in header_line
+        assert "patched" in header_line
+
+
 class TestCompareReports:
     def test_too_few_reports(self):
         with pytest.raises(SystemExit, match="at least 2"):
             compare_reports(["only_one.json"], "ascii")
+
+    def test_comparison_file_rejected_as_input(self, tmp_path):
+        # Regression test: feeding compare's own JSON output back in as
+        # one of the reports to compare must fail loudly instead of
+        # silently producing a nonsensical comparison.
+        base = make_report(values=[1.0, 1.1, 1.2])
+        patched = make_report(values=[1.3, 1.4, 1.5])
+
+        p1 = save_report(base, str(tmp_path / "base.json"))
+
+        comparison_path = tmp_path / "comparison.json"
+        comparison_path.write_text(
+            json.dumps(build_comparison_data([base, patched], ["base", "patched"]))
+        )
+
+        with pytest.raises(SystemExit, match="comparison output"):
+            compare_reports([str(p1), str(comparison_path)], "ascii")
 
     def test_ascii_output(self, tmp_path, capsys):
         base = make_report(values=[1.0, 1.1, 1.2])

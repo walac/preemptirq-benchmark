@@ -5,6 +5,7 @@ import contextlib
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from preemptirq_benchmark.benchmarks import (
     BenchmarkResult,
@@ -13,7 +14,11 @@ from preemptirq_benchmark.benchmarks import (
     import_all,
     resolve_benchmarks,
 )
-from preemptirq_benchmark.compare import compare_reports
+from preemptirq_benchmark.compare import (
+    compare_reports,
+    display_comparison_data,
+    is_comparison_data,
+)
 from preemptirq_benchmark.perf_stat import is_available as perf_available
 from preemptirq_benchmark.perf_stat import run_with_perf_stat
 from preemptirq_benchmark.report import (
@@ -22,6 +27,7 @@ from preemptirq_benchmark.report import (
     load_report,
     save_report,
 )
+from preemptirq_benchmark.types import Report
 
 FORMAT_CHOICES = ["ascii", "txt", "markdown", "json"]
 
@@ -335,13 +341,20 @@ def managed_output(output_path: str | None):
 def cmd_show(args: argparse.Namespace) -> None:
     """Execute the 'show' subcommand.
 
+    Accepts either a benchmark report (from ``run``) or comparison
+    data (from ``compare --format json``) and dispatches to the
+    matching display function.
+
     Args:
         args: Parsed arguments from argparse.
     """
     fmt = resolve_output_format(args)
-    report = load_report(args.report)
+    data = load_report(args.report)
     with managed_output(args.output):
-        display_report(report, fmt)
+        if is_comparison_data(data):
+            display_comparison_data(data, fmt)
+        else:
+            display_report(cast(Report, data), fmt)
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
