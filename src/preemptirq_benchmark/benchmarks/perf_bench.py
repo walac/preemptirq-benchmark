@@ -57,7 +57,7 @@ class PerfBenchBenchmark(BenchmarkBase):
             metrics["pipe_usecs_per_op"] = float(usec_match.group(1))
 
         msg = subprocess.run(
-            ["perf", "bench", "sched", "messaging"],
+            self.get_command(),
             capture_output=True,
             text=True,
             check=True,
@@ -80,12 +80,17 @@ class PerfBenchBenchmark(BenchmarkBase):
         return metrics
 
     def get_command(self) -> list[str]:
-        """Return the perf bench pipe command for perf stat wrapping.
+        """Return the perf bench messaging command for perf stat wrapping.
+
+        ``run_once`` reuses this same command for its "messaging" run
+        (rather than hardcoding a separate copy), so the hardware
+        counters collected via ``perf stat`` always correspond to the
+        "messaging" sub-benchmark, not "pipe".
 
         Returns:
-            The perf bench sched pipe command.
+            The perf bench sched messaging command.
         """
-        return ["perf", "bench", "sched", "pipe"]
+        return ["perf", "bench", "sched", "messaging"]
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for perf bench metrics.
