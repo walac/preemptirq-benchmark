@@ -6,17 +6,19 @@ from pathlib import Path
 
 import pytest
 
+import preemptirq_benchmark.__main__ as main_module
 from preemptirq_benchmark.__main__ import (
     EXT_TO_FORMAT,
     _ci_percentage,
     cmd_compare,
+    cmd_run,
     cmd_show,
     infer_format,
     managed_output,
     resolve_output_format,
 )
-from preemptirq_benchmark.benchmarks import BenchmarkResult
-from preemptirq_benchmark.report import build_report, save_report
+from preemptirq_benchmark.benchmarks import BenchmarkBase, BenchmarkResult
+from preemptirq_benchmark.report import build_report, load_report, save_report
 
 
 def make_fixture_report(tmp_path: Path, values: list[float] | None = None) -> str:
@@ -167,6 +169,162 @@ class TestCmdShow:
         captured = capsys.readouterr()
         assert "Base:" in captured.out
         assert "time_seconds" in captured.out
+
+
+class _FakeBenchmarkSetupFails(BenchmarkBase):
+    name = "fake_setup_fails"
+    default_iterations = 1
+    supports_perf_stat = False
+
+    def __init__(self) -> None:
+        self.cleanup_called = False
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def setup(self) -> None:
+        raise RuntimeError("setup failed")
+
+    def run_once(self) -> dict[str, float]:
+        return {}
+
+    def get_units(self) -> dict[str, str]:
+        return {}
+
+    def cleanup(self) -> None:
+        self.cleanup_called = True
+
+
+class _FakeBenchmarkSucceeds(BenchmarkBase):
+    name = "fake_succeeds"
+    default_iterations = 1
+    supports_perf_stat = False
+
+    def __init__(self) -> None:
+        self.cleanup_called = False
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def run_once(self) -> dict[str, float]:
+        return {"metric": 1.0}
+
+    def get_units(self) -> dict[str, str]:
+        return {"metric": "unit"}
+
+    def cleanup(self) -> None:
+        self.cleanup_called = True
+
+
+class _FakeBenchmarkGetCommandFails(BenchmarkBase):
+    name = "fake_get_command_fails"
+    default_iterations = 1
+    supports_perf_stat = True
+
+    def __init__(self) -> None:
+        self.cleanup_called = False
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def run_once(self) -> dict[str, float]:
+        return {"metric": 1.0}
+
+    def get_command(self) -> list[str]:
+        raise RuntimeError("get_command failed")
+
+    def get_units(self) -> dict[str, str]:
+        return {"metric": "unit"}
+
+    def cleanup(self) -> None:
+        self.cleanup_called = True
+
+
+class TestCmdRun:
+    def test_setup_failure_in_one_benchmark_does_not_abort_others(self, monkeypatch, tmp_path):
+        # Regression test: bench.setup() used to be called outside any
+        # try/except, and the standalone bench.get_command() call (for
+        # perf-stat wrapping) was inside the try but not covered by
+        # its except, which only wrapped the inner per-iteration loop.
+        # A RuntimeError from either used to propagate uncaught out of
+        # cmd_run, crashing the whole multi-benchmark run and
+        # discarding every already-collected result, since results are
+        # only written to the report after the full benchmark loop
+        # completes.
+        fail_bench = _FakeBenchmarkSetupFails()
+        ok_bench = _FakeBenchmarkSucceeds()
+        benches_by_name = {fail_bench.name: fail_bench, ok_bench.name: ok_bench}
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(
+            main_module,
+            "resolve_benchmarks",
+            lambda *a, **k: [fail_bench.name, ok_bench.name],
+        )
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: benches_by_name[name])
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=False,
+            iterations=None,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert fail_bench.cleanup_called
+        assert ok_bench.cleanup_called
+
+        report = load_report(str(tmp_path / "report.json"))
+        assert report["benchmarks_run"] == [ok_bench.name]
+        assert fail_bench.name not in report["results"]
+
+    def test_get_command_failure_still_saves_partial_result(self, monkeypatch, tmp_path):
+        # Regression test: the standalone bench.get_command() call
+        # (used for perf-stat wrapping after the iteration loop) sat
+        # inside the outer try but was not covered by any except --
+        # only the inner per-iteration except caught run_once()
+        # failures. A RuntimeError from get_command() (as
+        # KernelCompileBenchmark's get_command() can now raise via
+        # run_make("clean")) used to propagate uncaught, discarding
+        # this benchmark's already-successful iterations too.
+        bench = _FakeBenchmarkGetCommandFails()
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=True,
+            iterations=None,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert bench.cleanup_called
+
+        report = load_report(str(tmp_path / "report.json"))
+        assert report["benchmarks_run"] == [bench.name]
+        assert report["results"][bench.name]["metrics"]["metric"]["mean"] == 1.0
 
 
 class TestCmdCompare:

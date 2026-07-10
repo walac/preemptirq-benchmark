@@ -244,8 +244,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             units=bench.get_units(),
         )
 
-        bench.setup()
         try:
+            bench.setup()
             for i in range(iters):
                 try:
                     metrics = bench.run_once()
@@ -268,6 +268,8 @@ def cmd_run(args: argparse.Namespace) -> None:
                     _, counters = run_with_perf_stat(cmd)
                     for cname, cval in counters.items():
                         result.perf_counters[cname] = [cval]
+        except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+            print(f"\nWarning: {bench.name} failed: {e}", file=sys.stderr)
         finally:
             bench.cleanup()
 
