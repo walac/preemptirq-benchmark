@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from unittest.mock import patch
 
 import pytest
@@ -109,6 +110,28 @@ class TestComputeDeltaPct:
 
     def test_zero_both(self):
         assert compute_delta_pct(0.0, 0.0) == 0.0
+
+    def test_zero_base_nan_other_propagates_nan(self):
+        # Regression test: NaN compares false against both "> 0" and
+        # "< 0", so it used to fall through to the "both zero" branch
+        # and silently return 0.0 instead of propagating NaN. This is
+        # the one case that actually exercises the fix -- the others
+        # below already returned NaN before the fix too, via ordinary
+        # NaN-propagating arithmetic, and are pinned down here only to
+        # document that the explicit isnan() check doesn't disturb them.
+        assert math.isnan(compute_delta_pct(0.0, float("nan")))
+
+    def test_nonzero_base_nan_other_propagates_nan(self):
+        assert math.isnan(compute_delta_pct(100.0, float("nan")))
+
+    def test_nan_base_propagates_nan(self):
+        assert math.isnan(compute_delta_pct(float("nan"), 10.0))
+
+    def test_both_nan_propagates_nan(self):
+        assert math.isnan(compute_delta_pct(float("nan"), float("nan")))
+
+    def test_negative_zero_base_nan_other_propagates_nan(self):
+        assert math.isnan(compute_delta_pct(-0.0, float("nan")))
 
 
 class TestFormatDeltaPct:

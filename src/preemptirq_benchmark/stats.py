@@ -111,8 +111,13 @@ def compute_delta_pct(base: float, other: float) -> float:
         other: The comparison value.
 
     Returns:
-        Percentage change as a float.  Returns float('inf') or float('-inf') if base is zero and other is not. Returns 0.0 if both are 0.
+        Percentage change as a float.  Returns float('inf') or
+        float('-inf') if base is zero and other is a nonzero, non-NaN
+        value of the corresponding sign. Returns 0.0 if both are 0.
+        Returns float('nan') if either input is NaN.
     """
+    if math.isnan(base) or math.isnan(other):
+        return float("nan")
     if base == 0.0:
         if other > 0:
             return float("inf")
