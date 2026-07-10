@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from preemptirq_benchmark.formatters import (
     auto_style_cell,
+    format_ascii,
     format_json,
+    format_markdown,
     format_table,
+    format_txt,
 )
 
 
@@ -74,6 +79,49 @@ class TestAutoStyleCell:
     def test_ns_suffix(self):
         text = auto_style_cell("+0.1% (ns)")
         assert text.style == "dim"
+
+
+class TestRowLengthValidation:
+    def test_format_ascii_raises_on_short_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 1 cell\(s\).*2 header\(s\)"):
+            format_ascii("Title", ["A", "B"], [["one"]])
+
+    def test_format_ascii_raises_on_long_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 3 cell\(s\).*2 header\(s\)"):
+            format_ascii("Title", ["A", "B"], [["one", "two", "three"]])
+
+    def test_format_txt_raises_on_short_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 1 cell\(s\).*2 header\(s\)"):
+            format_txt("Title", ["A", "B"], [["one"]])
+
+    def test_format_txt_raises_on_long_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 3 cell\(s\).*2 header\(s\)"):
+            format_txt("Title", ["A", "B"], [["one", "two", "three"]])
+
+    def test_format_markdown_raises_on_short_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 1 cell\(s\).*2 header\(s\)"):
+            format_markdown("Title", ["A", "B"], [["one"]])
+
+    def test_format_markdown_raises_on_long_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 3 cell\(s\).*2 header\(s\)"):
+            format_markdown("Title", ["A", "B"], [["one", "two", "three"]])
+
+    def test_format_json_raises_on_short_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 1 cell\(s\).*2 header\(s\)"):
+            format_json("Title", ["A", "B"], [["one"]])
+
+    def test_format_json_raises_on_long_row(self):
+        with pytest.raises(ValueError, match=r"Row 0 has 3 cell\(s\).*2 header\(s\)"):
+            format_json("Title", ["A", "B"], [["one", "two", "three"]])
+
+    def test_format_table_raises_for_mismatched_row(self):
+        with pytest.raises(ValueError, match=r"Row 1 has 1 cell\(s\).*2 header\(s\)"):
+            format_table(
+                "Title",
+                ["A", "B"],
+                [["one", "two"], ["only-one"]],
+                "markdown",
+            )
 
 
 class TestFormatJson:

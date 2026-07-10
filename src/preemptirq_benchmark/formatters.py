@@ -41,6 +41,29 @@ def format_table(
     return formatters[fmt](title, headers, rows, col_styles=col_styles)
 
 
+def _validate_row_lengths(headers: list[str], rows: list[list[str]]) -> None:
+    """Ensure every row has exactly as many cells as there are headers.
+
+    Rows that are shorter or longer than ``headers`` would otherwise be
+    silently misaligned or truncated by ``zip(headers, row)``-style
+    pairing in the renderers below.
+
+    Args:
+        headers: Column header strings.
+        rows: List of rows, each a list of cell strings.
+
+    Raises:
+        ValueError: If any row's length does not match ``len(headers)``.
+    """
+    expected = len(headers)
+    for index, row in enumerate(rows):
+        if len(row) != expected:
+            raise ValueError(
+                f"Row {index} has {len(row)} cell(s) but there are "
+                f"{expected} header(s): {row!r}"
+            )
+
+
 def format_ascii(
     title: str,
     headers: list[str],
@@ -63,6 +86,7 @@ def format_ascii(
     Returns:
         Rendered table with ANSI escape codes for terminal display.
     """
+    _validate_row_lengths(headers, rows)
     console = Console(file=None, force_terminal=True, width=200)
     table = Table(title=title, show_lines=False)
 
@@ -129,6 +153,7 @@ def format_txt(
     Returns:
         Plain-text table with no ANSI escape codes.
     """
+    _validate_row_lengths(headers, rows)
     all_rows = [headers] + rows
     widths = [max(len(cell) for cell in col) for col in zip(*all_rows)]
 
@@ -168,6 +193,7 @@ def format_markdown(
     Returns:
         Markdown-formatted table string.
     """
+    _validate_row_lengths(headers, rows)
     widths = [max(len(cell) for cell in col) for col in zip(*([headers] + rows))]
 
     def fmt_row(row: list[str]) -> str:
@@ -211,6 +237,7 @@ def format_json(
         Pretty-printed JSON string with title, headers, and rows
         (each row is a dict keyed by header name).
     """
+    _validate_row_lengths(headers, rows)
     data = {
         "title": title,
         "headers": headers,
