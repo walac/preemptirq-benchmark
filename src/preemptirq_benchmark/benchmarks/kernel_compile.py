@@ -79,7 +79,7 @@ class KernelCompileBenchmark(BenchmarkBase):
 
         start = time.monotonic()
         proc = subprocess.run(
-            self.get_command(),
+            self._build_command(),
             capture_output=True,
             text=True,
         )
@@ -128,16 +128,31 @@ class KernelCompileBenchmark(BenchmarkBase):
                 f"make {target} failed (exit {proc.returncode}): {proc.stderr[:500]}"
             )
 
-    def get_command(self) -> list[str]:
-        """Return the build command for perf stat wrapping.
-
-        Returns the timed make invocation only; defconfig and clean
-        are run separately in run_once() before this command.
+    def _build_command(self) -> list[str]:
+        """Return the timed make invocation without side effects.
 
         Returns:
             A shell command as a list of strings.
         """
         return ["time", "-v", "make", "-C", str(self.kernel_src), f"-j{os.cpu_count() or 1}"]
+
+    def get_command(self) -> list[str]:
+        """Return the build command for perf stat wrapping.
+
+        The CLI runner calls this once, standalone, to collect perf
+        counters for a single perf-stat-wrapped build *after* the
+        normal run_once() iterations have already completed and left
+        the tree fully built. Unlike run_once(), which runs its own
+        ``make clean`` immediately before building, this method has
+        no such preceding clean step, so it runs one here to force a
+        full rebuild instead of measuring a near-instant no-op
+        incremental build.
+
+        Returns:
+            A shell command as a list of strings.
+        """
+        self.run_make("clean")
+        return self._build_command()
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for kernel compile metrics.
