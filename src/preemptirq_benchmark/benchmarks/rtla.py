@@ -36,7 +36,7 @@ class RtlaBenchmark(BenchmarkBase):
         metrics: dict[str, float] = {}
 
         tl = subprocess.run(
-            ["rtla", "timerlat", "top", "-d", "30", "-q"],
+            self.get_command(),
             capture_output=True,
             text=True,
             check=True,
@@ -57,6 +57,13 @@ class RtlaBenchmark(BenchmarkBase):
 
     def get_command(self) -> list[str]:
         """Return the rtla timerlat command for perf stat wrapping.
+
+        ``run_once`` reuses this same command for its timerlat
+        measurement (rather than hardcoding a separate copy), so the
+        hardware counters collected via ``perf stat`` always
+        correspond to the timerlat sub-measurement specifically, not
+        the separate osnoise measurement also reported by
+        ``run_once``.
 
         Returns:
             The rtla timerlat command as a list of strings.
