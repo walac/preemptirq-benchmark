@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from typing import TypeVar
 
 ALL_BENCHMARK_NAMES: list[str] = []
 
@@ -92,6 +93,16 @@ class BenchmarkBase(ABC):
     def get_command(self) -> list[str] | None:
         """Return the shell command for perf stat wrapping.
 
+        Called standalone by the CLI runner, separately from
+        :meth:`run_once`'s own iterations. If an override also reuses
+        this command from within :meth:`run_once` (to guarantee the
+        two never drift apart), it must stay free of side effects that
+        would be wrong to repeat there (e.g. leave any needed cleanup
+        or reset in the override itself, not here — see
+        ``kernel_compile.py``'s ``get_command``/``_build_command``
+        split, where ``get_command`` deliberately reruns a "clean"
+        step and is therefore never reused by ``run_once``).
+
         Returns:
             A command list suitable for :func:`subprocess.run`, or
             None if this benchmark does not use an external command
@@ -117,8 +128,10 @@ class BenchmarkBase(ABC):
 
 REGISTRY: dict[str, type[BenchmarkBase]] = {}
 
+_BenchmarkT = TypeVar("_BenchmarkT", bound=BenchmarkBase)
 
-def register(cls: type[BenchmarkBase]) -> type[BenchmarkBase]:
+
+def register(cls: type[_BenchmarkT]) -> type[_BenchmarkT]:
     """Class decorator that adds a benchmark to the global registry.
 
     Args:
