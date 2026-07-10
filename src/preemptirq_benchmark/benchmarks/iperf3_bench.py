@@ -4,7 +4,9 @@ import json
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
+from typing import IO
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 
@@ -18,7 +20,8 @@ class Iperf3Benchmark(BenchmarkBase):
     default_iterations = 10
 
     def __init__(self) -> None:
-        self.server_proc: subprocess.Popen[bytes] | None = None
+        self.server_proc: subprocess.Popen[str] | None = None
+        self._server_stderr: IO[str] | None = None
 
     def check_prerequisites(self) -> tuple[bool, str]:
         """Check that iperf3 is installed.
@@ -31,13 +34,39 @@ class Iperf3Benchmark(BenchmarkBase):
         return False, "iperf3 not found (install: dnf install iperf3)"
 
     def setup(self) -> None:
-        """Start the iperf3 server in daemon mode."""
+        """Start the iperf3 server in daemon mode.
+
+        The server's stderr is captured to a temp file rather than a
+        pipe: a pipe's OS buffer is bounded (64KB on Linux), and
+        nothing reads it once startup succeeds, so a pipe would risk
+        the server blocking on a write() call and hanging for the
+        rest of the run if it ever logs enough warnings over a long
+        benchmark session. A temp file has no such bound.
+
+        Raises:
+            RuntimeError: If the server process has already exited by
+                the time the startup wait completes (e.g. port already
+                in use, or the binary crashed immediately).
+        """
+        self._server_stderr = tempfile.TemporaryFile(mode="w+")
         self.server_proc = subprocess.Popen(
             ["iperf3", "-s"],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=self._server_stderr,
+            text=True,
         )
         time.sleep(0.5)
+        proc = self.server_proc
+        returncode = proc.poll()
+        if returncode is not None:
+            self._server_stderr.seek(0)
+            stderr = self._server_stderr.read()
+            self._server_stderr.close()
+            self._server_stderr = None
+            self.server_proc = None
+            raise RuntimeError(
+                f"iperf3 server failed to start (exit code {returncode}): {stderr.strip()}"
+            )
 
     def run_once(self) -> dict[str, float]:
         """Run TCP and UDP bidirectional tests and parse JSON results.
@@ -85,6 +114,8 @@ class Iperf3Benchmark(BenchmarkBase):
             metrics["udp_sender_gbps"] = udp_sum["bits_per_second"] / 1e9
             metrics["udp_jitter_ms"] = udp_sum["jitter_ms"]
             metrics["udp_lost_pct"] = udp_sum["lost_percent"]
+            udp_sum_reverse = udp_data["end"]["sum_bidir_reverse"]
+            metrics["udp_receiver_gbps"] = udp_sum_reverse["bits_per_second"] / 1e9
         except KeyError as e:
             raise RuntimeError(f"cannot find expected keys in iperf3 UDP JSON: {e}") from e
 
@@ -108,6 +139,9 @@ class Iperf3Benchmark(BenchmarkBase):
                 self.server_proc.kill()
                 self.server_proc.wait()
             self.server_proc = None
+        if self._server_stderr:
+            self._server_stderr.close()
+            self._server_stderr = None
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for iperf3 metrics.
@@ -119,6 +153,7 @@ class Iperf3Benchmark(BenchmarkBase):
             "tcp_sender_gbps": "Gbps",
             "tcp_receiver_gbps": "Gbps",
             "udp_sender_gbps": "Gbps",
+            "udp_receiver_gbps": "Gbps",
             "udp_jitter_ms": "ms",
             "udp_lost_pct": "%",
         }
