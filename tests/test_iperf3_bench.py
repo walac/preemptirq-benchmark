@@ -14,6 +14,8 @@ TCP_JSON = json.dumps(
         "end": {
             "sum_sent": {"bits_per_second": 9.5e9},
             "sum_received": {"bits_per_second": 9.4e9},
+            "sum_sent_bidir_reverse": {"bits_per_second": 7.2e9},
+            "sum_received_bidir_reverse": {"bits_per_second": 7.1e9},
         }
     }
 )
@@ -47,6 +49,15 @@ UDP_JSON_NO_REVERSE = json.dumps(
     }
 )
 
+TCP_JSON_NO_REVERSE = json.dumps(
+    {
+        "end": {
+            "sum_sent": {"bits_per_second": 9.5e9},
+            "sum_received": {"bits_per_second": 9.4e9},
+        }
+    }
+)
+
 
 def _make_fake_run(tcp_stdout: str, udp_stdout: str):
     def fake_run(cmd, **kwargs):
@@ -74,6 +85,22 @@ class TestRunOnceBidirReverseParsing:
         assert metrics["udp_jitter_ms"] == pytest.approx(0.05)
         assert metrics["udp_lost_pct"] == pytest.approx(0.1)
 
+    def test_extracts_both_forward_and_reverse_tcp_throughput(self, monkeypatch):
+        # Regression test: --bidir also requests a simultaneous
+        # reverse-direction TCP stream (server -> client), but
+        # tcp_receiver_gbps previously read end.sum_received, which is
+        # the *forward* stream measured at its receiving end (the
+        # server) -- not the reverse stream. That silently duplicated
+        # tcp_sender_gbps under a different name and never reported the
+        # actual reverse-direction throughput.
+        monkeypatch.setattr(subprocess, "run", _make_fake_run(TCP_JSON, UDP_JSON_WITH_REVERSE))
+
+        bench = Iperf3Benchmark()
+        metrics = bench.run_once()
+
+        assert metrics["tcp_sender_gbps"] == pytest.approx(9.5)
+        assert metrics["tcp_receiver_gbps"] == pytest.approx(7.1)
+
     def test_raises_clear_error_when_reverse_sum_missing(self, monkeypatch):
         # If iperf3's JSON is missing the reverse-direction summary,
         # the benchmark must fail loudly instead of silently omitting
@@ -83,6 +110,20 @@ class TestRunOnceBidirReverseParsing:
         bench = Iperf3Benchmark()
 
         with pytest.raises(RuntimeError, match="cannot find expected keys in iperf3 UDP JSON"):
+            bench.run_once()
+
+    def test_raises_clear_error_when_tcp_reverse_sum_missing(self, monkeypatch):
+        # Same failure mode as above, but for the TCP path: if iperf3's
+        # JSON is missing sum_received_bidir_reverse, the benchmark must
+        # fail loudly instead of silently falling back to some other
+        # field (e.g. the forward-direction sum_received).
+        monkeypatch.setattr(
+            subprocess, "run", _make_fake_run(TCP_JSON_NO_REVERSE, UDP_JSON_WITH_REVERSE)
+        )
+
+        bench = Iperf3Benchmark()
+
+        with pytest.raises(RuntimeError, match="cannot find expected keys in iperf3 TCP JSON"):
             bench.run_once()
 
     def test_get_units_documents_the_reverse_metric(self):

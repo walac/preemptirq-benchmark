@@ -94,7 +94,9 @@ class Iperf3Benchmark(BenchmarkBase):
         try:
             tcp_end = tcp_data["end"]
             metrics["tcp_sender_gbps"] = tcp_end["sum_sent"]["bits_per_second"] / 1e9
-            metrics["tcp_receiver_gbps"] = tcp_end["sum_received"]["bits_per_second"] / 1e9
+            metrics["tcp_receiver_gbps"] = (
+                tcp_end["sum_received_bidir_reverse"]["bits_per_second"] / 1e9
+            )
         except KeyError as e:
             raise RuntimeError(f"cannot find expected keys in iperf3 TCP JSON: {e}") from e
 
