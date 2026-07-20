@@ -405,7 +405,17 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
             proc.stdout,
         )
         if m:
-            result["throughput_ops_per_sec"] = float(m.group(1))
+            value = float(m.group(1))
+            unit_prefix = m.group(2)
+            # Convert to millions (M ops/s) to match get_units()
+            try:
+                multiplier = {"K": 1e-3, "M": 1.0, "G": 1e3}[unit_prefix]
+            except KeyError as e:
+                raise RuntimeError(
+                    f"unexpected unit prefix in bench output, expected K, M, or G. "
+                    f"output={proc.stdout[-500:]!r}"
+                ) from e
+            result["throughput_ops_per_sec"] = value * multiplier
         m = re.search(r"latency\s+([\d.]+)\s*([a-z]+)/op", proc.stdout)
         if m:
             result["latency_per_op"] = float(m.group(1))
