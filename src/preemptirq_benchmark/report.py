@@ -18,6 +18,26 @@ from preemptirq_benchmark.types import BenchmarkEntry, MetricData, Report
 REPORT_VERSION = 3
 
 
+def should_exclude_tracerbench_metric(
+    metric_name: str,
+    exclude_stats: list[str],
+) -> bool:
+    """Check if a tracerbench metric should be excluded.
+
+    Args:
+        metric_name: Metric name in "test_type/stat_name" format
+            (e.g., "irq/median").
+        exclude_stats: List of statistic names to exclude.
+
+    Returns:
+        True if the metric should be excluded, False otherwise.
+    """
+    if "/" not in metric_name:
+        return False
+    _, stat_name = metric_name.rsplit("/", 1)
+    return stat_name in exclude_stats
+
+
 def build_report(
     results: list[BenchmarkResult],
     tracerbench_config: dict[str, int] | None = None,
@@ -142,7 +162,11 @@ def load_report(path: str | Path) -> dict[str, Any]:
         raise SystemExit(f"Error: cannot read file {p}: {e}") from e
 
 
-def display_report(report: Report, fmt: str) -> None:
+def display_report(
+    report: Report,
+    fmt: str,
+    tracerbench_exclude_stats: list[str] | None = None,
+) -> None:
     """Print a report to stdout in the requested format.
 
     Each benchmark gets its own table with one row per metric
@@ -152,6 +176,8 @@ def display_report(report: Report, fmt: str) -> None:
         report: A report dict from :func:`build_report` or
             :func:`load_report`.
         fmt: Output format — "ascii", "txt", "markdown", or "json".
+        tracerbench_exclude_stats: List of statistic names to exclude
+            from tracerbench metrics (e.g., ["median", "max"]).
     """
     if fmt == "json":
         print(json.dumps(report, indent=2))
@@ -170,6 +196,12 @@ def display_report(report: Report, fmt: str) -> None:
         rows: list[list[str]] = []
 
         for metric_name, mdata in bench_data["metrics"].items():
+            if (
+                bench_name == "tracerbench"
+                and tracerbench_exclude_stats
+                and should_exclude_tracerbench_metric(metric_name, tracerbench_exclude_stats)
+            ):
+                continue
             unit = mdata.get("unit", "")
             suffix = f" {unit}" if unit else ""
             rows.append(

@@ -179,6 +179,12 @@ def add_show_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ig
         default=None,
         help="Write output to file (format inferred from extension if --format not given)",
     )
+    show.add_argument(
+        "--tracerbench-exclude-stats",
+        type=str,
+        default=None,
+        help="Comma-separated tracerbench statistics to exclude (e.g., 'median,max')",
+    )
 
 
 def add_compare_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -202,6 +208,12 @@ def add_compare_parser(subparsers: argparse._SubParsersAction) -> None:  # type:
         type=str,
         default=None,
         help="Write output to file (format inferred from extension if --format not given)",
+    )
+    cmp.add_argument(
+        "--tracerbench-exclude-stats",
+        type=str,
+        default=None,
+        help="Comma-separated tracerbench statistics to exclude (e.g., 'median,max')",
     )
 
 
@@ -352,11 +364,17 @@ def cmd_show(args: argparse.Namespace) -> None:
     """
     fmt = resolve_output_format(args)
     data = load_report(args.report)
+    exclude_stats_raw = getattr(args, "tracerbench_exclude_stats", None)
+    exclude_stats = (
+        [s.strip() for s in exclude_stats_raw.split(",")]
+        if exclude_stats_raw
+        else None
+    )
     with managed_output(args.output):
         if is_comparison_data(data):
-            display_comparison_data(data, fmt)
+            display_comparison_data(data, fmt, tracerbench_exclude_stats=exclude_stats)
         else:
-            display_report(cast(Report, data), fmt)
+            display_report(cast(Report, data), fmt, tracerbench_exclude_stats=exclude_stats)
 
 
 def cmd_compare(args: argparse.Namespace) -> None:
@@ -366,8 +384,14 @@ def cmd_compare(args: argparse.Namespace) -> None:
         args: Parsed arguments from argparse.
     """
     fmt = resolve_output_format(args)
+    exclude_stats_raw = getattr(args, "tracerbench_exclude_stats", None)
+    exclude_stats = (
+        [s.strip() for s in exclude_stats_raw.split(",")]
+        if exclude_stats_raw
+        else None
+    )
     with managed_output(args.output):
-        compare_reports(args.reports, fmt)
+        compare_reports(args.reports, fmt, tracerbench_exclude_stats=exclude_stats)
 
 
 def print_progress(

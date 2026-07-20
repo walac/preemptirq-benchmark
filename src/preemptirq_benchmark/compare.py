@@ -7,7 +7,7 @@ from typing import Any, cast
 
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
-from preemptirq_benchmark.report import load_report
+from preemptirq_benchmark.report import load_report, should_exclude_tracerbench_metric
 from preemptirq_benchmark.stats import (
     compute_delta_pct,
     format_delta_pct,
@@ -32,6 +32,7 @@ def _build_comparison_rows(
     format_base: Callable[[dict[str, Any]], str],
     format_delta: Callable[[dict[str, Any], dict[str, Any]], str],
     format_abs: Callable[[dict[str, Any]], str],
+    exclude_stats: list[str] | None = None,
 ) -> list[list[str]]:
     base_section = base.get("results", {}).get(bench_name, {}).get(section, {})
     all_keys = set(base_section.keys())
@@ -40,6 +41,13 @@ def _build_comparison_rows(
 
     rows: list[list[str]] = []
     for key in sorted(all_keys):
+        if (
+            bench_name == "tracerbench"
+            and section == "metrics"
+            and exclude_stats
+            and should_exclude_tracerbench_metric(key, exclude_stats)
+        ):
+            continue
         row = [label_fn(key)]
         base_data = base_section.get(key)
         row.append(format_base(base_data) if base_data else "N/A")
@@ -60,6 +68,7 @@ def _build_comparison_rows(
 def compare_reports(
     paths: list[str],
     fmt: str,
+    tracerbench_exclude_stats: list[str] | None = None,
 ) -> None:
     """Load multiple reports and print comparison tables.
 
@@ -70,6 +79,8 @@ def compare_reports(
     Args:
         paths: List of paths to JSON report files (minimum 2).
         fmt: Output format — "ascii", "txt", "markdown", or "json".
+        tracerbench_exclude_stats: List of statistic names to exclude
+            from tracerbench metrics (e.g., ["median", "max"]).
 
     Raises:
         SystemExit: If fewer than 2 paths are given, a file is invalid,
@@ -88,7 +99,12 @@ def compare_reports(
         labels.append(Path(p).stem)
 
     if fmt == "json":
-        print(json.dumps(build_comparison_data(reports, labels), indent=2))
+        print(
+            json.dumps(
+                build_comparison_data(reports, labels, tracerbench_exclude_stats),
+                indent=2,
+            )
+        )
         return
 
     print_comparison_header(reports, labels, fmt)
@@ -118,6 +134,7 @@ def compare_reports(
                     f"{mann_whitney(bd.get('values', []), od.get('values', [])).label}"
                 ),
                 format_abs=_fmt_metric,
+                exclude_stats=tracerbench_exclude_stats,
             )
         )
         rows.extend(
@@ -132,6 +149,7 @@ def compare_reports(
                     compute_delta_pct(bd["mean"], od["mean"])
                 ),
                 format_abs=lambda d: f"{d['mean']:.0f}",
+                exclude_stats=None,
             )
         )
 
@@ -141,12 +159,15 @@ def compare_reports(
 def build_comparison_data(
     reports: list[Report],
     labels: list[str],
+    tracerbench_exclude_stats: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build a JSON-serializable comparison structure.
 
     Args:
         reports: List of loaded report dicts, first is baseline.
         labels: Display names for each report (from filenames).
+        tracerbench_exclude_stats: List of statistic names to exclude
+            from tracerbench metrics (e.g., ["median", "max"]).
 
     Returns:
         Dict with per-benchmark, per-metric delta percentages
@@ -172,6 +193,12 @@ def build_comparison_data(
             all_metrics |= set(r.get("results", {}).get(bench_name, {}).get("metrics", {}).keys())
 
         for metric_name in sorted(all_metrics):
+            if (
+                bench_name == "tracerbench"
+                and tracerbench_exclude_stats
+                and should_exclude_tracerbench_metric(metric_name, tracerbench_exclude_stats)
+            ):
+                continue
             base_mdata = base_metrics.get(metric_name)
             unit = base_mdata.get("unit", "") if base_mdata else ""
             metric_cmp: dict[str, Any] = {
@@ -258,7 +285,11 @@ def is_comparison_data(data: Mapping[str, Any]) -> bool:
     return "compared" in data and "benchmarks" in data
 
 
-def display_comparison_data(data: Mapping[str, Any], fmt: str) -> None:
+def display_comparison_data(
+    data: Mapping[str, Any],
+    fmt: str,
+    tracerbench_exclude_stats: list[str] | None = None,
+) -> None:
     """Print previously saved comparison JSON as formatted tables.
 
     This re-displays the output of :func:`build_comparison_data` (e.g.
@@ -269,6 +300,8 @@ def display_comparison_data(data: Mapping[str, Any], fmt: str) -> None:
     Args:
         data: Comparison dict as produced by :func:`build_comparison_data`.
         fmt: Output format — "ascii", "txt", "markdown", or "json".
+        tracerbench_exclude_stats: List of statistic names to exclude
+            from tracerbench metrics (e.g., ["median", "max"]).
     """
     if fmt == "json":
         print(json.dumps(data, indent=2))
@@ -301,6 +334,12 @@ def display_comparison_data(data: Mapping[str, Any], fmt: str) -> None:
         rows: list[list[str]] = []
 
         for metric_name in sorted(bench_data):
+            if (
+                bench_name == "tracerbench"
+                and tracerbench_exclude_stats
+                and should_exclude_tracerbench_metric(metric_name, tracerbench_exclude_stats)
+            ):
+                continue
             mcmp = bench_data[metric_name]
             unit = mcmp.get("unit", "")
             suffix = f" {unit}" if unit else ""
