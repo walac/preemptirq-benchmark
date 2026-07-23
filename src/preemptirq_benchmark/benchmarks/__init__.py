@@ -19,14 +19,16 @@ class BenchmarkResult:
         metrics: Mapping of metric name to list of per-iteration values.
         units: Mapping of metric name to its unit string (e.g. "s", "ns").
         perf_counters: Mapping of perf event name to list of per-iteration
-            counts.  Empty when perf stat is disabled or not applicable.
+            counts.  Most events are integer counts, but some (e.g.
+            "task-clock") are fractional.  Empty when perf stat is
+            disabled or not applicable.
         iterations: Number of completed iterations.
     """
 
     name: str
     metrics: dict[str, list[float]] = field(default_factory=dict)
     units: dict[str, str] = field(default_factory=dict)
-    perf_counters: dict[str, list[int]] = field(default_factory=dict)
+    perf_counters: dict[str, list[int | float]] = field(default_factory=dict)
     iterations: int = 0
 
 

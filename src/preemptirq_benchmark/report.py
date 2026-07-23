@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,55 @@ from preemptirq_benchmark.stats import compute_stats
 from preemptirq_benchmark.types import BenchmarkEntry, MetricData, Report
 
 REPORT_VERSION = 3
+
+
+def perf_counter_is_integer(values: list[Any]) -> bool:
+    """Check whether a perf counter's raw samples are all integer counts.
+
+    Most perf events (cycles, instructions, ...) report whole-number
+    counts, but some (e.g. "task-clock") report fractional values.
+
+    Args:
+        values: The perf counter's raw per-iteration samples.
+
+    Returns:
+        True if there is at least one sample and all samples are
+        ``int``, False otherwise (including when *values* is empty).
+    """
+    return bool(values) and all(isinstance(v, int) for v in values)
+
+
+def format_perf_mean_value(mean: float, is_integer: bool) -> str:
+    """Format a perf counter mean value, preserving fractional precision.
+
+    Truncating a fractional counter's mean (e.g. "task-clock") to an
+    integer would silently discard precision, so integer-typed and
+    fractional counters use different decimal precision.
+
+    Args:
+        mean: The counter's mean value.
+        is_integer: Whether the counter's raw samples are all integer
+            counts (see :func:`perf_counter_is_integer`).
+
+    Returns:
+        The formatted mean, with decimals only for fractional counters.
+    """
+    if is_integer:
+        return f"{mean:.0f}"
+    return f"{mean:.4f}"
+
+
+def format_perf_counter_mean(cdata: Mapping[str, Any]) -> str:
+    """Format a perf counter's mean, preserving fractional precision.
+
+    Args:
+        cdata: The perf counter's report entry.
+
+    Returns:
+        The formatted mean, with decimals only when the underlying
+        samples are fractional.
+    """
+    return format_perf_mean_value(cdata["mean"], perf_counter_is_integer(cdata["values"]))
 
 
 def should_exclude_tracerbench_metric(
@@ -97,8 +147,7 @@ def build_report(
         for counter_name, counts in result.perf_counters.items():
             if not counts:
                 continue
-            float_counts = [float(c) for c in counts]
-            mean = sum(float_counts) / len(float_counts)
+            mean = sum(counts) / len(counts)
             entry["perf_counters"][counter_name] = {
                 "values": counts,
                 "mean": mean,
@@ -219,7 +268,7 @@ def display_report(
                 rows.append(
                     [
                         f"perf:{cname}",
-                        f"{cdata['mean']:.0f}",
+                        format_perf_counter_mean(cdata),
                         "",
                         "",
                         "",

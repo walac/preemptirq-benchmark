@@ -9,6 +9,7 @@ from preemptirq_benchmark.report import (
     REPORT_VERSION,
     build_report,
     display_report,
+    format_perf_counter_mean,
     load_report,
     save_report,
 )
@@ -18,7 +19,7 @@ def make_result(
     name: str = "hackbench",
     metrics: dict[str, list[float]] | None = None,
     units: dict[str, str] | None = None,
-    perf_counters: dict[str, list[int]] | None = None,
+    perf_counters: dict[str, list[int | float]] | None = None,
     iterations: int = 3,
 ) -> BenchmarkResult:
     return BenchmarkResult(
@@ -99,6 +100,26 @@ class TestBuildReport:
         assert "good" in report["results"]["hackbench"]["metrics"]
         assert "empty" not in report["results"]["hackbench"]["metrics"]
 
+    def test_fractional_perf_counter(self):
+        result = make_result(perf_counters={"task-clock": [123.456789, 130.111]})
+        report = build_report([result])
+        cdata = report["results"]["hackbench"]["perf_counters"]["task-clock"]
+
+        assert cdata["values"] == [123.456789, 130.111]
+        assert cdata["mean"] == pytest.approx(126.7838945)
+
+
+class TestFormatPerfCounterMean:
+    def test_integer_counter_has_no_decimals(self):
+        cdata = {"values": [1000000, 1000200], "mean": 1000100.0, "sample_count": 2}
+
+        assert format_perf_counter_mean(cdata) == "1000100"
+
+    def test_fractional_counter_keeps_decimals(self):
+        cdata = {"values": [123.456789, 130.111], "mean": 126.7838945, "sample_count": 2}
+
+        assert format_perf_counter_mean(cdata) == "126.7839"
+
 
 class TestSaveLoadReport:
     def test_round_trip(self, tmp_path):
@@ -171,3 +192,11 @@ class TestDisplayReport:
         captured = capsys.readouterr()
         data = json.loads(captured.out)
         assert data["version"] == REPORT_VERSION
+
+    def test_ascii_output_preserves_fractional_perf_counter(self, capsys):
+        result = make_result(perf_counters={"task-clock": [123.456789]})
+        report = build_report([result])
+        display_report(report, "ascii")
+
+        captured = capsys.readouterr()
+        assert "123.4568" in captured.out

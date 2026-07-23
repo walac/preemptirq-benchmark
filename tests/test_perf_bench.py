@@ -79,4 +79,29 @@ class TestPerfStatWrappingAttribution:
         assert captured["cmd"][-4:] == ["perf", "bench", "sched", "messaging"][-4:]
         assert counters == parse_perf_csv(perf_stderr)
         assert counters["cycles"] == 1234567
+        assert isinstance(counters["cycles"], int)
         assert counters["instructions"] == 7654321
+        assert isinstance(counters["instructions"], int)
+
+
+class TestParsePerfCsvFractionalCounters:
+    def test_task_clock_is_parsed_as_float(self):
+        # task-clock reports a fractional millisecond value rather than
+        # an integer count; it must not be silently dropped, and must
+        # keep its float type rather than being truncated to int.
+        perf_stderr = "123.456789;msec;task-clock;100.00;;\n"
+
+        counters = parse_perf_csv(perf_stderr)
+
+        assert counters["task-clock"] == 123.456789
+        assert isinstance(counters["task-clock"], float)
+
+    def test_whole_counts_stay_int(self):
+        # Integer-looking counts must be parsed as int, not float, so
+        # that most counters keep exact integer semantics.
+        perf_stderr = "1234567;;cycles;100.00;;\n"
+
+        counters = parse_perf_csv(perf_stderr)
+
+        assert counters["cycles"] == 1234567
+        assert isinstance(counters["cycles"], int)

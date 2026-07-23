@@ -16,7 +16,7 @@ class MetricData(TypedDict):
 
 
 class PerfCounterData(TypedDict):
-    values: list[int]
+    values: list[int | float]
     mean: float
     sample_count: int
 

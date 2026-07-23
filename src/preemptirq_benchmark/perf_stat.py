@@ -17,6 +17,7 @@ DEFAULT_EVENTS = [
     "cache-references",
     "context-switches",
     "cpu-migrations",
+    "task-clock",
 ]
 
 
@@ -32,7 +33,7 @@ def is_available() -> bool:
 def run_with_perf_stat(
     cmd: list[str],
     events: list[str] | None = None,
-) -> tuple[subprocess.CompletedProcess[str], dict[str, int]]:
+) -> tuple[subprocess.CompletedProcess[str], dict[str, int | float]]:
     """Execute a command under ``perf stat`` and return parsed counters.
 
     The command is prefixed with
@@ -47,8 +48,10 @@ def run_with_perf_stat(
 
     Returns:
         A tuple of (CompletedProcess, counters) where *counters* is a
-        dict mapping event name to its integer count.  Events that perf
-        could not measure (e.g. ``<not supported>``) are omitted.
+        dict mapping event name to its count.  Most events report
+        integer counts, but some (e.g. ``task-clock``) report a
+        fractional value.  Events that perf could not measure (e.g.
+        ``<not supported>``) are omitted.
     """
     if events is None:
         events = DEFAULT_EVENTS
@@ -73,21 +76,23 @@ def run_with_perf_stat(
     return proc, counters
 
 
-def parse_perf_csv(stderr: str) -> dict[str, int]:
+def parse_perf_csv(stderr: str) -> dict[str, int | float]:
     """Parse perf stat CSV output (``-x ";"`` format) into a dict.
 
     Each line has the form ``<count>;<unit>;<event>;...`` where *count*
     may be ``<not counted>`` or ``<not supported>`` for unavailable
-    counters.
+    counters.  Most events report an integer count, but some (e.g.
+    ``task-clock``) report a fractional value; the count is parsed as
+    ``int`` when possible and falls back to ``float`` otherwise.
 
     Args:
         stderr: Raw stderr output from ``perf stat -x ";"``.
 
     Returns:
-        Dict mapping event name to integer count.  Unparseable or
-        unsupported counters are silently skipped.
+        Dict mapping event name to count.  Unparseable or unsupported
+        counters are silently skipped.
     """
-    counters: dict[str, int] = {}
+    counters: dict[str, int | float] = {}
     for line in stderr.strip().splitlines():
         parts = line.split(";")
         if len(parts) < 3:
@@ -99,5 +104,8 @@ def parse_perf_csv(stderr: str) -> dict[str, int]:
         try:
             counters[event_name] = int(count_str)
         except ValueError:
-            continue
+            try:
+                counters[event_name] = float(count_str)
+            except ValueError:
+                continue
     return counters

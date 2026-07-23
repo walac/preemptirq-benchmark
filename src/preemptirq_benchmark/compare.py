@@ -7,7 +7,13 @@ from typing import Any, cast
 
 from preemptirq_benchmark.benchmarks import BENCHMARK_DESCRIPTIONS
 from preemptirq_benchmark.formatters import format_table
-from preemptirq_benchmark.report import load_report, should_exclude_tracerbench_metric
+from preemptirq_benchmark.report import (
+    format_perf_counter_mean,
+    format_perf_mean_value,
+    load_report,
+    perf_counter_is_integer,
+    should_exclude_tracerbench_metric,
+)
 from preemptirq_benchmark.stats import (
     compute_delta_pct,
     format_delta_pct,
@@ -144,11 +150,11 @@ def compare_reports(
                 bench_name,
                 "perf_counters",
                 label_fn=lambda name: f"perf:{name}",
-                format_base=lambda d: f"{d['mean']:.0f}",
+                format_base=format_perf_counter_mean,
                 format_delta=lambda bd, od: format_delta_pct(
                     compute_delta_pct(bd["mean"], od["mean"])
                 ),
-                format_abs=lambda d: f"{d['mean']:.0f}",
+                format_abs=format_perf_counter_mean,
                 exclude_stats=None,
             )
         )
@@ -170,8 +176,11 @@ def build_comparison_data(
             from tracerbench metrics (e.g., ["median", "max"]).
 
     Returns:
-        Dict with per-benchmark, per-metric delta percentages
-        and significance results.
+        Dict with per-benchmark, per-metric delta percentages and
+        significance results.  Perf counters are included under keys
+        prefixed with "perf:" (e.g. "perf:cycles") with a delta
+        percentage but, matching the table output, no significance
+        test.
     """
     base = reports[0]
     data: dict[str, Any] = {
@@ -215,14 +224,14 @@ def build_comparison_data(
                 if other_mdata is None:
                     continue
                 if base_mdata is None:
-                    if not metric_cmp["unit"]:
-                        # Metric doesn't exist in the baseline at all, so
-                        # there's no base unit to report — take the first
-                        # non-empty unit among compared reports instead of
-                        # leaving it blank.
-                        metric_cmp["unit"] = other_mdata.get("unit", "")
+                    # Metric doesn't exist in the baseline, so its
+                    # "other_mean" is displayed directly rather than as a
+                    # delta -- unit must come from this specific report's
+                    # own data, not a shared/first-seen guess, since
+                    # different compared reports could disagree.
                     metric_cmp["comparisons"][labels[i + 1]] = {
                         "other_mean": other_mdata["mean"],
+                        "other_unit": other_mdata.get("unit", ""),
                     }
                     continue
                 pct = compute_delta_pct(base_mdata["mean"], other_mdata["mean"])
@@ -236,6 +245,50 @@ def build_comparison_data(
                 }
 
             bench_data[metric_name] = metric_cmp
+
+        base_counters = base.get("results", {}).get(bench_name, {}).get("perf_counters", {})
+        all_counters = set(base_counters.keys())
+        for r in reports[1:]:
+            all_counters |= set(
+                r.get("results", {}).get(bench_name, {}).get("perf_counters", {}).keys()
+            )
+
+        for counter_name in sorted(all_counters):
+            base_cdata = base_counters.get(counter_name)
+            base_is_integer = perf_counter_is_integer(base_cdata["values"]) if base_cdata else None
+            counter_cmp: dict[str, Any] = {
+                "base_mean": base_cdata["mean"] if base_cdata else None,
+                "is_integer": base_is_integer if base_is_integer is not None else True,
+                "comparisons": {},
+            }
+
+            for i, other in enumerate(reports[1:]):
+                other_cdata = (
+                    other.get("results", {})
+                    .get(bench_name, {})
+                    .get("perf_counters", {})
+                    .get(counter_name)
+                )
+                if other_cdata is None:
+                    continue
+                if base_cdata is None:
+                    # Counter doesn't exist in the baseline, so its
+                    # "other_mean" is displayed directly rather than as a
+                    # delta -- typing must come from this specific report's
+                    # own samples, not a shared/first-seen guess, since
+                    # different compared reports could disagree.
+                    counter_cmp["comparisons"][labels[i + 1]] = {
+                        "other_mean": other_cdata["mean"],
+                        "other_is_integer": perf_counter_is_integer(other_cdata["values"]),
+                    }
+                    continue
+                pct = compute_delta_pct(base_cdata["mean"], other_cdata["mean"])
+                counter_cmp["comparisons"][labels[i + 1]] = {
+                    "delta_pct": round(pct, 2),
+                    "other_mean": other_cdata["mean"],
+                }
+
+            bench_data[f"perf:{counter_name}"] = counter_cmp
 
         data["benchmarks"][bench_name] = bench_data
 
@@ -333,20 +386,58 @@ def display_comparison_data(
         headers = ["Metric", base_label] + compared_labels
         rows: list[list[str]] = []
 
-        for metric_name in sorted(bench_data):
+        # Metrics are listed before perf counters, matching the ordering
+        # produced directly by compare_reports (metrics section, then
+        # perf_counters section) instead of one alphabetical sort that
+        # would interleave "perf:*" keys with metric names.
+        metric_names = sorted(k for k in bench_data if not k.startswith("perf:"))
+        perf_names = sorted(k for k in bench_data if k.startswith("perf:"))
+
+        for metric_name in metric_names + perf_names:
             if (
                 bench_name == "tracerbench"
+                and not metric_name.startswith("perf:")
                 and tracerbench_exclude_stats
                 and should_exclude_tracerbench_metric(metric_name, tracerbench_exclude_stats)
             ):
                 continue
             mcmp = bench_data[metric_name]
+            comparisons = mcmp.get("comparisons", {})
+
+            if metric_name.startswith("perf:"):
+                # Perf counters have no unit and no significance test
+                # (see build_comparison_data), and need is_integer-aware
+                # formatting to avoid truncating fractional counters
+                # like "task-clock".
+                is_integer = mcmp.get("is_integer", True)
+                base_mean = mcmp.get("base_mean")
+                row = [
+                    metric_name,
+                    format_perf_mean_value(base_mean, is_integer)
+                    if base_mean is not None
+                    else "N/A",
+                ]
+                for label in compared_labels:
+                    entry = comparisons.get(label)
+                    if entry is None:
+                        row.append("N/A")
+                    elif "delta_pct" in entry:
+                        row.append(format_delta_pct(entry["delta_pct"]))
+                    else:
+                        # No baseline to diff against for this counter, so
+                        # its own typing (not the row-level one, which
+                        # reflects only the base report) is used to format
+                        # "other_mean" directly.
+                        entry_is_integer = entry.get("other_is_integer", is_integer)
+                        row.append(format_perf_mean_value(entry["other_mean"], entry_is_integer))
+                rows.append(row)
+                continue
+
             unit = mcmp.get("unit", "")
             suffix = f" {unit}" if unit else ""
             base_mean = mcmp.get("base_mean")
             row = [metric_name, f"{base_mean:.2f}{suffix}" if base_mean is not None else "N/A"]
 
-            comparisons = mcmp.get("comparisons", {})
             for label in compared_labels:
                 entry = comparisons.get(label)
                 if entry is None:
@@ -354,7 +445,13 @@ def display_comparison_data(
                 elif "delta_pct" in entry:
                     row.append(f"{format_delta_pct(entry['delta_pct'])} {entry['significant']}")
                 else:
-                    row.append(f"{entry['other_mean']:.2f}{suffix}")
+                    # No baseline to diff against for this metric, so its
+                    # own unit (not the row-level one, which reflects only
+                    # the base report) is used to format "other_mean"
+                    # directly.
+                    entry_unit = entry.get("other_unit", unit)
+                    entry_suffix = f" {entry_unit}" if entry_unit else ""
+                    row.append(f"{entry['other_mean']:.2f}{entry_suffix}")
 
             rows.append(row)
 

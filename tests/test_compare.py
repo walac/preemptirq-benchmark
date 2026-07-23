@@ -19,7 +19,7 @@ def make_report(
     name: str = "hackbench",
     values: list[float] | None = None,
     units: dict[str, str] | None = None,
-    perf_counters: dict[str, list[int]] | None = None,
+    perf_counters: dict[str, list[int | float]] | None = None,
 ) -> Report:
     result = BenchmarkResult(
         name=name,
@@ -101,16 +101,17 @@ class TestBuildComparisonData:
 
         nm = data["benchmarks"]["hackbench"]["new_metric"]
         assert nm["base_mean"] is None
-        assert nm["unit"] == "y"
+        assert nm["unit"] == ""
         assert "other" in nm["comparisons"]
         assert "other_mean" in nm["comparisons"]["other"]
+        assert nm["comparisons"]["other"]["other_unit"] == "y"
 
-    def test_missing_metric_in_base_takes_unit_from_first_report_that_has_it(self):
+    def test_missing_metric_in_base_each_report_keeps_own_unit(self):
         # Regression test: when two compared reports both carry a metric
-        # that's absent from the baseline, the unit must come from the
-        # first one (v1), not be overwritten by a later one (v2) that
-        # also happens to carry the metric -- otherwise this would be
-        # indistinguishable from a "last report wins" bug.
+        # that's absent from the baseline and disagree on unit, each
+        # report's own unit must be used to format its own value --
+        # not a single unit locked in from whichever report was seen
+        # first, which would misrepresent the other report's value.
         base = make_report(values=[1.0, 1.1, 1.2])
 
         v1_result = BenchmarkResult(
@@ -133,7 +134,8 @@ class TestBuildComparisonData:
 
         nm = data["benchmarks"]["hackbench"]["new_metric"]
         assert nm["base_mean"] is None
-        assert nm["unit"] == "y1"
+        assert nm["comparisons"]["v1"]["other_unit"] == "y1"
+        assert nm["comparisons"]["v2"]["other_unit"] == "y2"
 
     def test_empty_base_unit_not_overridden_by_compared_report(self):
         # Regression test: when a metric IS present in the baseline but
@@ -162,6 +164,84 @@ class TestBuildComparisonData:
         count = data["benchmarks"]["hackbench"]["count"]
         assert count["base_mean"] is not None
         assert count["unit"] == ""
+
+    def test_perf_counters_included(self):
+        base = make_report(perf_counters={"cycles": [1000000]})
+        patched = make_report(perf_counters={"cycles": [1100000]})
+
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        cycles = data["benchmarks"]["hackbench"]["perf:cycles"]
+        assert cycles["base_mean"] == 1000000.0
+        assert cycles["comparisons"]["patched"]["other_mean"] == 1100000.0
+        assert cycles["comparisons"]["patched"]["delta_pct"] > 0
+        assert "p_value" not in cycles["comparisons"]["patched"]
+
+    def test_fractional_perf_counter_preserved(self):
+        base = make_report(perf_counters={"task-clock": [123.456789]})
+        patched = make_report(perf_counters={"task-clock": [130.111]})
+
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        tc = data["benchmarks"]["hackbench"]["perf:task-clock"]
+        assert tc["base_mean"] == pytest.approx(123.456789)
+        assert tc["comparisons"]["patched"]["other_mean"] == pytest.approx(130.111)
+
+    def test_perf_counter_missing_in_base(self):
+        base = make_report()
+        other_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5]},
+            perf_counters={"cycles": [1100000]},
+            iterations=3,
+        )
+        other = build_report([other_result])
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        cycles = data["benchmarks"]["hackbench"]["perf:cycles"]
+        assert cycles["base_mean"] is None
+        assert cycles["comparisons"]["other"]["other_mean"] == 1100000.0
+
+    def test_perf_counter_missing_in_base_with_mixed_typing(self, capsys):
+        # Regression test: when a counter is absent from the baseline and
+        # present in more than one compared report, each report's own
+        # int/float typing must be used to format its "other_mean" --
+        # not a single flag locked in from whichever report was seen
+        # first, which would misformat the others if their typing
+        # differs.
+        base = make_report()
+
+        int_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5]},
+            perf_counters={"cycles": [1100000]},
+            iterations=3,
+        )
+        int_report = build_report([int_result])
+
+        float_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.6, 1.7, 1.8]},
+            perf_counters={"cycles": [123.456789]},
+            iterations=3,
+        )
+        float_report = build_report([float_result])
+
+        data = build_comparison_data(
+            [base, int_report, float_report], ["base", "ints", "floats"]
+        )
+
+        cycles = data["benchmarks"]["hackbench"]["perf:cycles"]
+        assert cycles["comparisons"]["ints"]["other_is_integer"] is True
+        assert cycles["comparisons"]["floats"]["other_is_integer"] is False
+
+        display_comparison_data(data, "ascii")
+
+        # No exception, and each report's mean keeps its own precision.
+        captured = capsys.readouterr()
+        assert "1100000" in captured.out
+        assert "123.4568" in captured.out
 
 
 class TestIsComparisonData:
@@ -214,7 +294,50 @@ class TestDisplayComparisonData:
         captured = capsys.readouterr()
         assert json.loads(captured.out) == data
 
-    def test_metric_missing_from_base_shows_other_mean(self):
+    def test_perf_counters_ordered_after_metrics_like_compare_reports(
+        self, tmp_path, capsys
+    ):
+        # Regression test: compare_reports always lists all metrics
+        # before all perf counters (two separate table sections), but
+        # display_comparison_data used to sort every bench_data key
+        # (metric names and "perf:*" names) together alphabetically,
+        # which could interleave them -- e.g. a metric name starting
+        # with a letter after "p" would sort after "perf:cycles" even
+        # though compare_reports always puts it first. Use such a
+        # metric name to prove the two paths now agree on ordering.
+        base_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.0, 1.1, 1.2], "zzz_metric": [1.0, 2.0]},
+            units={"time_seconds": "s", "zzz_metric": "x"},
+            perf_counters={"cycles": [1000000]},
+            iterations=3,
+        )
+        base = build_report([base_result])
+        other_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5], "zzz_metric": [1.5, 2.5]},
+            units={"time_seconds": "s", "zzz_metric": "x"},
+            perf_counters={"cycles": [1100000]},
+            iterations=3,
+        )
+        other = build_report([other_result])
+
+        p1 = save_report(base, str(tmp_path / "base.json"))
+        p2 = save_report(other, str(tmp_path / "other.json"))
+        compare_reports([str(p1), str(p2)], "txt")
+        direct_out = capsys.readouterr().out
+        direct_zzz_pos = direct_out.index("zzz_metric")
+        direct_perf_pos = direct_out.index("perf:cycles")
+        assert direct_zzz_pos < direct_perf_pos
+
+        data = build_comparison_data([base, other], ["base", "other"])
+        display_comparison_data(data, "txt")
+        redisplay_out = capsys.readouterr().out
+        redisplay_zzz_pos = redisplay_out.index("zzz_metric")
+        redisplay_perf_pos = redisplay_out.index("perf:cycles")
+        assert redisplay_zzz_pos < redisplay_perf_pos
+
+    def test_metric_missing_from_base_shows_other_mean(self, capsys):
         # Regression test: build_comparison_data omits "delta_pct" for
         # metrics absent from the baseline (only "other_mean" is set),
         # so display_comparison_data must not KeyError on "delta_pct".
@@ -231,6 +354,118 @@ class TestDisplayComparisonData:
         data = build_comparison_data([base, other], ["base", "other"])
 
         display_comparison_data(data, "ascii")
+
+        captured = capsys.readouterr()
+        assert "new_metric" in captured.out
+        assert "2.05 y" in captured.out
+
+    def test_metric_missing_from_base_display_keeps_each_reports_own_unit(self, capsys):
+        # Regression test: when a metric is absent from the baseline and
+        # compared reports disagree on unit (e.g. "ms" vs "s"), each
+        # report's own value must be displayed with its own unit --
+        # a shared row-level unit here would silently misrepresent one
+        # report's value under the other's unit.
+        base = make_report(values=[1.0, 1.1, 1.2])
+
+        ms_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5], "latency": [50.0]},
+            units={"time_seconds": "s", "latency": "ms"},
+            iterations=3,
+        )
+        ms_report = build_report([ms_result])
+
+        s_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.6, 1.7, 1.8], "latency": [0.05]},
+            units={"time_seconds": "s", "latency": "s"},
+            iterations=3,
+        )
+        s_report = build_report([s_result])
+
+        data = build_comparison_data(
+            [base, ms_report, s_report], ["base", "ms_run", "s_run"]
+        )
+        display_comparison_data(data, "ascii")
+
+        captured = capsys.readouterr()
+        assert "50.00 ms" in captured.out
+        assert "0.05 s" in captured.out
+
+    def test_tracerbench_exclude_stats_does_not_affect_perf_counters(self, capsys):
+        # Regression test: the tracerbench exclude-stats filter matches
+        # a metric name's "test_type/stat_name" suffix (e.g. dropping
+        # "irq/max" when "max" is excluded). Raw perf event names can
+        # also legitimately contain "/" (e.g. PMU syntax like
+        # "cpu/event=0x3c/max"), so a filter that doesn't distinguish
+        # perf:* rows from tracerbench metric rows would incorrectly
+        # drop such a counter. compare_reports already guards this via
+        # _build_comparison_rows's section=="metrics" check; this test
+        # locks in the same guard in display_comparison_data.
+        base_result = BenchmarkResult(
+            name="tracerbench",
+            metrics={"irq/median": [100.0], "irq/max": [120.0]},
+            units={"irq/median": "cycles", "irq/max": "cycles"},
+            perf_counters={"cpu/event=0x3c/max": [1000000]},
+            iterations=1,
+        )
+        base = build_report([base_result])
+        other_result = BenchmarkResult(
+            name="tracerbench",
+            metrics={"irq/median": [110.0], "irq/max": [130.0]},
+            units={"irq/median": "cycles", "irq/max": "cycles"},
+            perf_counters={"cpu/event=0x3c/max": [1100000]},
+            iterations=1,
+        )
+        other = build_report([other_result])
+
+        data = build_comparison_data(
+            [base, other], ["base", "other"], tracerbench_exclude_stats=["max"]
+        )
+        display_comparison_data(data, "ascii", tracerbench_exclude_stats=["max"])
+
+        captured = capsys.readouterr()
+        assert "irq/median" in captured.out
+        assert "irq/max" not in captured.out
+        assert "perf:cpu/event=0x3c/max" in captured.out
+
+    def test_perf_counter_delta_does_not_crash(self, capsys):
+        # Regression test: build_comparison_data omits "significant" for
+        # perf counter deltas (no significance test is run for them),
+        # so display_comparison_data must not KeyError on "significant"
+        # when re-displaying a perf:* row that has a "delta_pct".
+        base = make_report(perf_counters={"cycles": [1000000]})
+        patched = make_report(perf_counters={"cycles": [1100000]})
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "ascii")
+
+        captured = capsys.readouterr()
+        assert "perf:cycles" in captured.out
+
+    def test_perf_counter_missing_from_base_shows_other_mean(self):
+        base = make_report()
+        other_result = BenchmarkResult(
+            name="hackbench",
+            metrics={"time_seconds": [1.3, 1.4, 1.5]},
+            perf_counters={"cycles": [1100000]},
+            iterations=3,
+        )
+        other = build_report([other_result])
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        display_comparison_data(data, "ascii")
+
+    def test_fractional_perf_counter_display_preserves_precision(self, capsys):
+        base = make_report(perf_counters={"task-clock": [123.456789]})
+        patched = make_report(perf_counters={"task-clock": [130.111]})
+        data = build_comparison_data([base, patched], ["baseline", "patched"])
+
+        display_comparison_data(data, "ascii")
+
+        captured = capsys.readouterr()
+        assert "123.4568" in captured.out
 
     def test_header_includes_base_and_compared_labels(self, capsys):
         # Regression test: the header row must include the base label
@@ -320,6 +555,31 @@ class TestCompareReports:
 
         captured = capsys.readouterr()
         assert "perf:cycles" in captured.out
+
+    def test_perf_counter_comparison_json(self, tmp_path, capsys):
+        base = make_report(perf_counters={"cycles": [1000000]})
+        patched = make_report(perf_counters={"cycles": [1100000]})
+
+        p1 = save_report(base, str(tmp_path / "base.json"))
+        p2 = save_report(patched, str(tmp_path / "patched.json"))
+
+        compare_reports([str(p1), str(p2)], "json")
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "perf:cycles" in data["benchmarks"]["hackbench"]
+
+    def test_fractional_perf_counter_comparison_keeps_precision(self, tmp_path, capsys):
+        base = make_report(perf_counters={"task-clock": [123.456789]})
+        patched = make_report(perf_counters={"task-clock": [130.111]})
+
+        p1 = save_report(base, str(tmp_path / "base.json"))
+        p2 = save_report(patched, str(tmp_path / "patched.json"))
+
+        compare_reports([str(p1), str(p2)], "txt")
+
+        captured = capsys.readouterr()
+        assert "123.4568" in captured.out
 
     def test_benchmark_only_in_other(self, tmp_path, capsys):
         base = make_report(values=[1.0, 1.1, 1.2])
