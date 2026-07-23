@@ -19,6 +19,7 @@ from preemptirq_benchmark.compare import (
     display_comparison_data,
     is_comparison_data,
 )
+from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
 from preemptirq_benchmark.perf_stat import is_available as perf_available
 from preemptirq_benchmark.perf_stat import run_with_perf_stat
 from preemptirq_benchmark.report import (
@@ -120,6 +121,12 @@ def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         help="Comma-separated list of benchmarks to exclude",
     )
     run.add_argument("--perf-stat", action="store_true", help="Wrap benchmarks with perf stat")
+    run.add_argument(
+        "--perf-stat-events",
+        type=str,
+        default=None,
+        help="Comma-separated perf events to add to the defaults",
+    )
     run.add_argument(
         "--kernel-src",
         type=str,
@@ -241,10 +248,17 @@ def cmd_run(args: argparse.Namespace) -> None:
 
     check_all_prerequisites(benchmarks)
 
-    use_perf = args.perf_stat
+    use_perf = args.perf_stat or bool(args.perf_stat_events)
     if use_perf and not perf_available():
         print("Warning: perf not found, running without perf stat", file=sys.stderr)
         use_perf = False
+
+    extra_perf_events: list[str] = []
+    if args.perf_stat_events:
+        extra_perf_events = [e.strip() for e in args.perf_stat_events.split(",") if e.strip()]
+
+    # Use dict.fromkeys to deduplicate the event list while preserving insertion order
+    perf_events = list(dict.fromkeys(list(DEFAULT_EVENTS) + extra_perf_events))
 
     results: list[BenchmarkResult] = []
     total = len(benchmarks)
@@ -277,7 +291,7 @@ def cmd_run(args: argparse.Namespace) -> None:
                 cmd = bench.get_command()
                 if cmd:
                     print(f"  Collecting perf stat for {bench.name}...")
-                    _, counters = run_with_perf_stat(cmd)
+                    _, counters = run_with_perf_stat(cmd, events=perf_events)
                     for cname, cval in counters.items():
                         result.perf_counters[cname] = [cval]
         except (subprocess.CalledProcessError, RuntimeError, OSError) as e:

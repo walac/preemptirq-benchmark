@@ -120,6 +120,10 @@ sudo uv run preemptirq-benchmark run --include=hackbench --iterations 20
 # Note: silently skipped by tracerbench and bpf-* benchmarks
 sudo uv run preemptirq-benchmark run --include=hackbench --perf-stat
 
+# Add custom perf events (appended to built-in defaults)
+sudo uv run preemptirq-benchmark run --include=hackbench \
+    --perf-stat-events "preemptirq:preempt_disable,preemptirq:preempt_enable"
+
 # Use a 99% confidence interval instead of the default 95%
 sudo uv run preemptirq-benchmark run --include=hackbench --confidence-interval 99
 

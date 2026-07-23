@@ -273,6 +273,7 @@ class TestCmdRun:
             highest=None,
             percentile=None,
             perf_stat=False,
+            perf_stat_events=None,
             iterations=None,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
@@ -313,6 +314,7 @@ class TestCmdRun:
             highest=None,
             percentile=None,
             perf_stat=True,
+            perf_stat_events=None,
             iterations=None,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
@@ -325,6 +327,143 @@ class TestCmdRun:
         report = load_report(str(tmp_path / "report.json"))
         assert report["benchmarks_run"] == [bench.name]
         assert report["results"][bench.name]["metrics"]["metric"]["mean"] == 1.0
+
+
+class _FakeBenchmarkWithPerfStat(BenchmarkBase):
+    name = "fake_perf"
+    default_iterations = 1
+    supports_perf_stat = True
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def run_once(self) -> dict[str, float]:
+        return {"metric": 1.0}
+
+    def get_command(self) -> list[str]:
+        return ["true"]
+
+    def get_units(self) -> dict[str, str]:
+        return {"metric": "unit"}
+
+
+class TestPerfStatEvents:
+    def test_extra_events_appended_to_defaults(self, monkeypatch, tmp_path):
+        from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
+
+        bench = _FakeBenchmarkWithPerfStat()
+        captured_events: list[list[str]] = []
+
+        def fake_run_with_perf_stat(cmd, events=None):
+            captured_events.append(events)
+            import subprocess
+
+            return subprocess.CompletedProcess(cmd, 0), {"cycles": 42}
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+        monkeypatch.setattr(main_module, "run_with_perf_stat", fake_run_with_perf_stat)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=True,
+            perf_stat_events="event_a,event_b",
+            iterations=None,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert len(captured_events) == 1
+        assert captured_events[0] == list(DEFAULT_EVENTS) + ["event_a", "event_b"]
+
+    def test_no_extra_events_passes_defaults(self, monkeypatch, tmp_path):
+        from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
+
+        bench = _FakeBenchmarkWithPerfStat()
+        captured_events: list[list[str]] = []
+
+        def fake_run_with_perf_stat(cmd, events=None):
+            captured_events.append(events)
+            import subprocess
+
+            return subprocess.CompletedProcess(cmd, 0), {"cycles": 42}
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+        monkeypatch.setattr(main_module, "run_with_perf_stat", fake_run_with_perf_stat)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=True,
+            perf_stat_events=None,
+            iterations=None,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert len(captured_events) == 1
+        assert captured_events[0] == list(DEFAULT_EVENTS)
+
+    def test_perf_stat_events_implies_perf_stat(self, monkeypatch, tmp_path):
+        from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
+
+        bench = _FakeBenchmarkWithPerfStat()
+        captured_events: list[list[str]] = []
+
+        def fake_run_with_perf_stat(cmd, events=None):
+            captured_events.append(events)
+            import subprocess
+
+            return subprocess.CompletedProcess(cmd, 0), {"cycles": 42}
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+        monkeypatch.setattr(main_module, "run_with_perf_stat", fake_run_with_perf_stat)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=False,
+            perf_stat_events="custom_event",
+            iterations=None,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert len(captured_events) == 1
+        assert captured_events[0] == list(DEFAULT_EVENTS) + ["custom_event"]
 
 
 class TestCmdCompare:

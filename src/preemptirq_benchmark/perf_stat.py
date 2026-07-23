@@ -17,7 +17,6 @@ DEFAULT_EVENTS = [
     "cache-references",
     "context-switches",
     "cpu-migrations",
-    "task-clock",
 ]
 
 
@@ -67,7 +66,7 @@ def run_with_perf_stat(
     proc = subprocess.run(perf_cmd, capture_output=True, text=True)
     if proc.returncode != 0:
         print(
-            f"Warning: perf stat wrapped command exited with code {proc.returncode}",
+            f"Warning: perf stat wrapped command exited with code {proc.returncode}\n{proc.stderr.strip()}",
             file=sys.stderr,
         )
     counters = parse_perf_csv(proc.stderr)
