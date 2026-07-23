@@ -8,7 +8,16 @@ DEFAULT_EVENTS = [
     "cycles",
     "instructions",
     "L1-icache-load-misses",
+    "L1-dcache-load-misses",
+    "LLC-load-misses",
     "branch-misses",
+    "iTLB-load-misses",
+    "dTLB-load-misses",
+    "cache-misses",
+    "cache-references",
+    "context-switches",
+    "cpu-migrations",
+    "task-clock",
 ]
 
 
@@ -35,8 +44,7 @@ def run_with_perf_stat(
     Args:
         cmd: The benchmark command and arguments to execute.
         events: Hardware counter event names to collect.  Defaults to
-            :data:`DEFAULT_EVENTS` (cycles, instructions,
-            L1-icache-load-misses, branch-misses).
+            :data:`DEFAULT_EVENTS`.
 
     Returns:
         A tuple of (CompletedProcess, counters) where *counters* is a
