@@ -4,6 +4,7 @@ import shutil
 import subprocess
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.cpu_isolation import format_cpu_list, get_isolated_cpus
 
 
 @register
@@ -12,17 +13,47 @@ class RtlaBenchmark(BenchmarkBase):
 
     name = "rtla"
     description = "RT latency (timerlat + osnoise)"
-    default_iterations = 30
+    default_iterations = 1
+    fixed_iterations = True
+
+    def __init__(self) -> None:
+        self.duration = "30"
+        self.isolated_cpus_only = False
+
+    def configure(self, **kwargs: object) -> None:
+        """Accept the duration and isolated_cpus_only CLI parameters.
+
+        Args:
+            kwargs: Optional keys "duration" (str, in rtla's own
+                ``s``/``m``/``h``/``d``-suffixed format) and
+                "isolated_cpus_only" (bool).
+        """
+        if kwargs.get("duration") is not None:
+            self.duration = str(kwargs["duration"])
+        if kwargs.get("isolated_cpus_only") is not None:
+            self.isolated_cpus_only = bool(kwargs["isolated_cpus_only"])
 
     def check_prerequisites(self) -> tuple[bool, str]:
-        """Check that rtla is installed.
+        """Check that rtla is installed and isolated CPUs exist if requested.
 
         Returns:
             (True, "") if found, or (False, install hint) otherwise.
         """
-        if shutil.which("rtla"):
-            return True, ""
-        return False, "rtla not found (install: dnf install rtla or kernel-tools)"
+        if not shutil.which("rtla"):
+            return False, "rtla not found (install: dnf install rtla or kernel-tools)"
+        if self.isolated_cpus_only and not get_isolated_cpus():
+            return False, "no isolated CPUs found (set isolcpus= kernel parameter)"
+        return True, ""
+
+    def _cpu_args(self) -> list[str]:
+        """Return the ``-c`` argument restricting rtla to isolated CPUs.
+
+        Returns:
+            ``["-c", cpu-list]`` if isolated_cpus_only is set, else [].
+        """
+        if not self.isolated_cpus_only:
+            return []
+        return ["-c", format_cpu_list(get_isolated_cpus())]
 
     def run_once(self) -> dict[str, float]:
         """Run rtla timerlat and osnoise, parsing summary output.
@@ -45,7 +76,7 @@ class RtlaBenchmark(BenchmarkBase):
         metrics["timerlat_max_us"] = max_lat
 
         on = subprocess.run(
-            ["rtla", "osnoise", "top", "-d", "30", "-q"],
+            ["rtla", "osnoise", "top", "-d", self.duration, "-q", *self._cpu_args()],
             capture_output=True,
             text=True,
             check=True,
@@ -68,7 +99,7 @@ class RtlaBenchmark(BenchmarkBase):
         Returns:
             The rtla timerlat command as a list of strings.
         """
-        return ["rtla", "timerlat", "top", "-d", "30", "-q"]
+        return ["rtla", "timerlat", "top", "-d", self.duration, "-q", *self._cpu_args()]
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for rtla metrics.
