@@ -47,12 +47,19 @@ class BenchmarkBase(ABC):
         supports_perf_stat: Whether this benchmark can be wrapped with
             ``perf stat``.  Defaults to True; tracerbench sets this to
             False.
+        fixed_iterations: If True, this benchmark always runs exactly
+            one iteration, ignoring both --iterations and
+            default_iterations.  For tools whose own duration flag
+            already controls run length (e.g. rtla, cyclictest), so
+            repeating run_once() would just multiply an
+            already-complete run.
     """
 
     name: str
     description: str = ""
     default_iterations: int
     supports_perf_stat: bool = True
+    fixed_iterations: bool = False
 
     @abstractmethod
     def check_prerequisites(self) -> tuple[bool, str]:
