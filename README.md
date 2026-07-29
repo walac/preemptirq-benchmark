@@ -39,10 +39,10 @@ uv run preemptirq-benchmark compare baseline.json patched.json
 | iperf3 | Networking throughput and jitter | 10 |
 | fio | I/O interrupt stress (null_blk + io_uring) | 10 |
 | stress-ng | Context switch saturation | 10 |
-| cyclictest | RT scheduling latency | 30 |
+| cyclictest | RT scheduling latency | 1 (fixed) |
 | perf-bench | In-tree scheduler benchmarks | 10 |
 | kernel-compile | Kernel build throughput (make -j) | 10 |
-| rtla | RT latency (timerlat + osnoise) | 30 |
+| rtla | RT latency (timerlat + osnoise) | 1 (fixed) |
 | tracerbench | Kernel module micro-benchmark (CPU cycles) | 5 |
 | bpf-fentry | BPF fentry trampoline overhead | 5 |
 | bpf-tp | BPF tracepoint overhead | 5 |
@@ -126,6 +126,16 @@ sudo uv run preemptirq-benchmark run --include=hackbench \
 
 # Use a 99% confidence interval instead of the default 95%
 sudo uv run preemptirq-benchmark run --include=hackbench --confidence-interval 99
+
+# rtla and cyclictest always run a single, duration-bounded iteration
+# (--iterations is ignored for them). Control that duration with -D,
+# using the same s/m/h/d-suffixed format rtla/cyclictest themselves use
+# (default: 30s)
+sudo uv run preemptirq-benchmark run --include=rtla,cyclictest -D 5m
+
+# Restrict rtla/cyclictest to the system's isolated CPUs (isolcpus=);
+# check-prerequisites fails if none are configured
+sudo uv run preemptirq-benchmark run --include=rtla,cyclictest --isolated-cpus-only
 
 # Include kernel-compile (requires --kernel-src)
 sudo uv run preemptirq-benchmark run --include=kernel-compile --kernel-src /path/to/linux
