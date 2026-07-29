@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.cpu_isolation import format_cpu_list, get_isolated_cpus
 
 
 @register
@@ -15,17 +16,73 @@ class CyclictestBenchmark(BenchmarkBase):
 
     name = "cyclictest"
     description = "RT scheduling latency"
-    default_iterations = 30
+    default_iterations = 1
+    fixed_iterations = True
+
+    def __init__(self) -> None:
+        self.duration = "30"
+        self.isolated_cpus_only = False
+
+    def configure(self, **kwargs: object) -> None:
+        """Accept the duration and isolated_cpus_only CLI parameters.
+
+        Args:
+            kwargs: Optional keys "duration" (str, in cyclictest's own
+                ``s``/``m``/``h``/``d``-suffixed format) and
+                "isolated_cpus_only" (bool).
+        """
+        if kwargs.get("duration") is not None:
+            self.duration = str(kwargs["duration"])
+        if kwargs.get("isolated_cpus_only") is not None:
+            self.isolated_cpus_only = bool(kwargs["isolated_cpus_only"])
 
     def check_prerequisites(self) -> tuple[bool, str]:
-        """Check that cyclictest is installed.
+        """Check that cyclictest is installed and isolated CPUs exist if requested.
 
         Returns:
             (True, "") if found, or (False, install hint) otherwise.
         """
-        if shutil.which("cyclictest"):
-            return True, ""
-        return False, "cyclictest not found (install: dnf install rt-tests)"
+        if not shutil.which("cyclictest"):
+            return False, "cyclictest not found (install: dnf install rt-tests)"
+        if self.isolated_cpus_only and not get_isolated_cpus():
+            return False, "no isolated CPUs found (set isolcpus= kernel parameter)"
+        return True, ""
+
+    def _cpu_args(self) -> list[str]:
+        """Return the ``-a`` argument restricting cyclictest to isolated CPUs.
+
+        Returns:
+            ``["-a", cpu-list]`` if isolated_cpus_only is set, else [].
+        """
+        if not self.isolated_cpus_only:
+            return []
+        return ["-a", format_cpu_list(get_isolated_cpus())]
+
+    def _base_command(self) -> list[str]:
+        """Return the cyclictest command shared by run_once() and get_command().
+
+        Kept as a single source of truth (per the perf-stat re-run
+        pitfall documented in AGENTS.md) so duration/CPU-affinity
+        options can't drift between the measurement run and the
+        standalone perf-stat re-run.
+
+        Returns:
+            The cyclictest command as a list of strings, without
+            ``--json`` (added by ``run_once`` only).
+        """
+        return [
+            "cyclictest",
+            "-m",
+            "-S",
+            "-p",
+            "98",
+            "-i",
+            "1000",
+            "-D",
+            self.duration,
+            "-q",
+            *self._cpu_args(),
+        ]
 
     def run_once(self) -> dict[str, float]:
         """Run a single cyclictest iteration and parse JSON output.
@@ -39,19 +96,7 @@ class CyclictestBenchmark(BenchmarkBase):
 
         try:
             subprocess.run(
-                [
-                    "cyclictest",
-                    "-m",
-                    "-S",
-                    "-p",
-                    "98",
-                    "-i",
-                    "1000",
-                    "-l",
-                    "100000",
-                    "-q",
-                    f"--json={json_path}",
-                ],
+                self._base_command() + [f"--json={json_path}"],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -95,18 +140,7 @@ class CyclictestBenchmark(BenchmarkBase):
         Returns:
             The cyclictest command as a list of strings.
         """
-        return [
-            "cyclictest",
-            "-m",
-            "-S",
-            "-p",
-            "98",
-            "-i",
-            "1000",
-            "-l",
-            "100000",
-            "-q",
-        ]
+        return self._base_command()
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for cyclictest metrics.
