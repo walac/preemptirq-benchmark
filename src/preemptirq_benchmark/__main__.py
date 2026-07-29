@@ -8,6 +8,9 @@ from pathlib import Path
 from typing import cast
 
 from preemptirq_benchmark.benchmarks import (
+    ALL_BENCHMARK_NAMES,
+    BENCHMARK_DESCRIPTIONS,
+    REGISTRY,
     BenchmarkResult,
     check_all_prerequisites,
     get_benchmark,
@@ -19,6 +22,7 @@ from preemptirq_benchmark.compare import (
     display_comparison_data,
     is_comparison_data,
 )
+from preemptirq_benchmark.formatters import format_table
 from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
 from preemptirq_benchmark.perf_stat import is_available as perf_available
 from preemptirq_benchmark.perf_stat import run_with_perf_stat
@@ -70,6 +74,7 @@ def main(argv: list[str] | None = None) -> None:
     add_run_parser(subparsers)
     add_show_parser(subparsers)
     add_compare_parser(subparsers)
+    add_list_parser(subparsers)
 
     args = parser.parse_args(argv)
 
@@ -79,6 +84,8 @@ def main(argv: list[str] | None = None) -> None:
         cmd_show(args)
     elif args.command == "compare":
         cmd_compare(args)
+    elif args.command == "list":
+        cmd_list(args)
 
 
 def _ci_percentage(value: str) -> float:
@@ -222,6 +229,31 @@ def add_compare_parser(subparsers: argparse._SubParsersAction) -> None:  # type:
         default=None,
         help="Comma-separated tracerbench statistics to exclude (e.g., 'median,max')",
     )
+
+
+def add_list_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
+    """Register the 'list' subcommand and its arguments.
+
+    Args:
+        subparsers: The subparsers action from the main parser.
+    """
+    subparsers.add_parser("list", help="List available benchmarks")
+
+
+def cmd_list(_args: argparse.Namespace) -> None:
+    """Execute the 'list' subcommand.
+
+    Args:
+        _args: Parsed arguments from argparse (unused).
+    """
+    import_all()
+
+    headers = ["Name", "Description", "Default Iterations"]
+    rows = [
+        [name, BENCHMARK_DESCRIPTIONS.get(name, ""), str(REGISTRY[name].default_iterations)]
+        for name in ALL_BENCHMARK_NAMES
+    ]
+    print(format_table("Available benchmarks", headers, rows, "ascii"))
 
 
 def cmd_run(args: argparse.Namespace) -> None:

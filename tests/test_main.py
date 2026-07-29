@@ -11,6 +11,7 @@ from preemptirq_benchmark.__main__ import (
     EXT_TO_FORMAT,
     _ci_percentage,
     cmd_compare,
+    cmd_list,
     cmd_run,
     cmd_show,
     infer_format,
@@ -464,6 +465,53 @@ class TestPerfStatEvents:
 
         assert len(captured_events) == 1
         assert captured_events[0] == list(DEFAULT_EVENTS) + ["custom_event"]
+
+
+class TestCmdList:
+    def test_lists_registered_benchmarks(self, monkeypatch, capsys):
+        class _FakeBenchA(BenchmarkBase):
+            name = "fake_a"
+            description = "Fake benchmark A"
+            default_iterations = 7
+
+            def check_prerequisites(self) -> tuple[bool, str]:
+                return True, ""
+
+            def run_once(self) -> dict[str, float]:
+                return {}
+
+        class _FakeBenchB(BenchmarkBase):
+            name = "fake_b"
+            description = "Fake benchmark B"
+            default_iterations = 3
+
+            def check_prerequisites(self) -> tuple[bool, str]:
+                return True, ""
+
+            def run_once(self) -> dict[str, float]:
+                return {}
+
+        def fake_import_all() -> None:
+            main_module.REGISTRY.clear()
+            main_module.REGISTRY[_FakeBenchA.name] = _FakeBenchA
+            main_module.REGISTRY[_FakeBenchB.name] = _FakeBenchB
+            main_module.ALL_BENCHMARK_NAMES[:] = sorted(main_module.REGISTRY.keys())
+            main_module.BENCHMARK_DESCRIPTIONS.clear()
+            main_module.BENCHMARK_DESCRIPTIONS.update(
+                {name: cls.description for name, cls in main_module.REGISTRY.items()}
+            )
+
+        monkeypatch.setattr(main_module, "import_all", fake_import_all)
+
+        cmd_list(argparse.Namespace())
+
+        captured = capsys.readouterr()
+        assert "fake_a" in captured.out
+        assert "Fake benchmark A" in captured.out
+        assert "7" in captured.out
+        assert "fake_b" in captured.out
+        assert "Fake benchmark B" in captured.out
+        assert "3" in captured.out
 
 
 class TestCmdCompare:
