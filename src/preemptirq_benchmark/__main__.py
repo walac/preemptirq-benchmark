@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -95,6 +96,30 @@ def _ci_percentage(value: str) -> float:
     return f
 
 
+_DURATION_RE = re.compile(r"^\d+[smhd]?$")
+
+
+def _duration_string(value: str) -> str:
+    """Validate a duration in rtla/cyclictest's own suffix format.
+
+    Args:
+        value: A number optionally suffixed with s/m/h/d (seconds if
+            no suffix), e.g. "30", "30s", "5m", "2h", "1d".
+
+    Returns:
+        The validated string, unchanged, for pass-through to rtla's
+        -d / cyclictest's -D flags.
+
+    Raises:
+        argparse.ArgumentTypeError: If the format doesn't match.
+    """
+    if not _DURATION_RE.match(value):
+        raise argparse.ArgumentTypeError(
+            f"must be a number optionally suffixed with s/m/h/d, got {value!r}"
+        )
+    return value
+
+
 def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
     """Register the 'run' subcommand and its arguments.
 
@@ -168,6 +193,19 @@ def add_run_parser(subparsers: argparse._SubParsersAction) -> None:  # type: ign
         type=int,
         default=None,
         help="tracerbench: percentile to compute",
+    )
+
+    run.add_argument(
+        "-D",
+        "--duration",
+        type=_duration_string,
+        default=None,
+        help="rtla/cyclictest: run duration, e.g. 30, 30s, 5m, 2h (default: 30, i.e. 30s)",
+    )
+    run.add_argument(
+        "--isolated-cpus-only",
+        action="store_true",
+        help="rtla/cyclictest: restrict runs to the system's isolated CPUs (isolcpus=)",
     )
 
 
@@ -275,6 +313,8 @@ def cmd_run(args: argparse.Namespace) -> None:
             nr_samples=args.samples,
             nr_highest=args.highest,
             percentile=args.percentile,
+            duration=args.duration,
+            isolated_cpus_only=args.isolated_cpus_only,
         )
         benchmarks.append(bench)
 
@@ -296,7 +336,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     total = len(benchmarks)
 
     for idx, bench in enumerate(benchmarks, 1):
-        iters = args.iterations if args.iterations is not None else bench.default_iterations
+        if bench.fixed_iterations:
+            iters = 1
+        else:
+            iters = args.iterations if args.iterations is not None else bench.default_iterations
         result = BenchmarkResult(
             name=bench.name,
             units=bench.get_units(),

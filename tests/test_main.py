@@ -10,6 +10,8 @@ import preemptirq_benchmark.__main__ as main_module
 from preemptirq_benchmark.__main__ import (
     EXT_TO_FORMAT,
     _ci_percentage,
+    _duration_string,
+    add_run_parser,
     cmd_compare,
     cmd_list,
     cmd_run,
@@ -88,6 +90,39 @@ class TestCiPercentage:
     def test_invalid_values(self, val):
         with pytest.raises(argparse.ArgumentTypeError):
             _ci_percentage(val)
+
+
+class TestDurationString:
+    @pytest.mark.parametrize("val", ["30", "30s", "5m", "2h", "1d"])
+    def test_valid_values(self, val):
+        assert _duration_string(val) == val
+
+    @pytest.mark.parametrize("val", ["", "abc", "30x", "-5", "5.5m"])
+    def test_invalid_values(self, val):
+        with pytest.raises(argparse.ArgumentTypeError):
+            _duration_string(val)
+
+
+class TestAddRunParser:
+    def _parse(self, argv):
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+        add_run_parser(subparsers)
+        return parser.parse_args(argv)
+
+    def test_duration_and_isolated_cpus_only_defaults(self):
+        args = self._parse(["run"])
+        assert args.duration is None
+        assert args.isolated_cpus_only is False
+
+    def test_duration_and_isolated_cpus_only_parsed(self):
+        args = self._parse(["run", "-D", "5m", "--isolated-cpus-only"])
+        assert args.duration == "5m"
+        assert args.isolated_cpus_only is True
+
+    def test_invalid_duration_rejected(self):
+        with pytest.raises(SystemExit):
+            self._parse(["run", "-D", "not-a-duration"])
 
 
 class TestManagedOutput:
@@ -276,6 +311,8 @@ class TestCmdRun:
             perf_stat=False,
             perf_stat_events=None,
             iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
         )
@@ -317,6 +354,8 @@ class TestCmdRun:
             perf_stat=True,
             perf_stat_events=None,
             iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
         )
@@ -328,6 +367,63 @@ class TestCmdRun:
         report = load_report(str(tmp_path / "report.json"))
         assert report["benchmarks_run"] == [bench.name]
         assert report["results"][bench.name]["metrics"]["metric"]["mean"] == 1.0
+
+
+class _FakeBenchmarkFixedIterations(BenchmarkBase):
+    name = "fake_fixed_iterations"
+    default_iterations = 1
+    fixed_iterations = True
+    supports_perf_stat = False
+
+    def __init__(self) -> None:
+        self.run_count = 0
+        self.configured_with: dict[str, object] = {}
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def configure(self, **kwargs: object) -> None:
+        self.configured_with = kwargs
+
+    def run_once(self) -> dict[str, float]:
+        self.run_count += 1
+        return {"metric": 1.0}
+
+    def get_units(self) -> dict[str, str]:
+        return {"metric": "unit"}
+
+
+class TestFixedIterations:
+    def test_runs_once_regardless_of_iterations_flag(self, monkeypatch, tmp_path):
+        bench = _FakeBenchmarkFixedIterations()
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=False,
+            perf_stat_events=None,
+            iterations=5,
+            duration="5m",
+            isolated_cpus_only=True,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        assert bench.run_count == 1
+        assert bench.configured_with["duration"] == "5m"
+        assert bench.configured_with["isolated_cpus_only"] is True
 
 
 class _FakeBenchmarkWithPerfStat(BenchmarkBase):
@@ -379,6 +475,8 @@ class TestPerfStatEvents:
             perf_stat=True,
             perf_stat_events="event_a,event_b",
             iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
         )
@@ -418,6 +516,8 @@ class TestPerfStatEvents:
             perf_stat=True,
             perf_stat_events=None,
             iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
         )
@@ -457,6 +557,8 @@ class TestPerfStatEvents:
             perf_stat=False,
             perf_stat_events="custom_event",
             iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
             confidence_interval=95.0,
             output=str(tmp_path / "report.json"),
         )
