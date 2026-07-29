@@ -411,11 +411,7 @@ def cmd_show(args: argparse.Namespace) -> None:
     fmt = resolve_output_format(args)
     data = load_report(args.report)
     exclude_stats_raw = getattr(args, "tracerbench_exclude_stats", None)
-    exclude_stats = (
-        [s.strip() for s in exclude_stats_raw.split(",")]
-        if exclude_stats_raw
-        else None
-    )
+    exclude_stats = [s.strip() for s in exclude_stats_raw.split(",")] if exclude_stats_raw else None
     with managed_output(args.output):
         if is_comparison_data(data):
             display_comparison_data(data, fmt, tracerbench_exclude_stats=exclude_stats)
@@ -431,11 +427,7 @@ def cmd_compare(args: argparse.Namespace) -> None:
     """
     fmt = resolve_output_format(args)
     exclude_stats_raw = getattr(args, "tracerbench_exclude_stats", None)
-    exclude_stats = (
-        [s.strip() for s in exclude_stats_raw.split(",")]
-        if exclude_stats_raw
-        else None
-    )
+    exclude_stats = [s.strip() for s in exclude_stats_raw.split(",")] if exclude_stats_raw else None
     with managed_output(args.output):
         compare_reports(args.reports, fmt, tracerbench_exclude_stats=exclude_stats)
 

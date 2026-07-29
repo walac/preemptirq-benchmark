@@ -17,10 +17,7 @@ class TestLpmTrieLookupParsing:
         # When bench output varied between "1500 K ops/s" and
         # "1.5 M ops/s", both stored as raw numbers but reported as
         # "M ops/s", producing false improvements.
-        stdout = (
-            "Summary: throughput 1500.00 ± 10.00 K ops/s, "
-            "latency 78.05 ns/op\n"
-        )
+        stdout = "Summary: throughput 1500.00 ± 10.00 K ops/s, " "latency 78.05 ns/op\n"
 
         def fake_run(cmd, **kwargs):
             return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
@@ -35,10 +32,7 @@ class TestLpmTrieLookupParsing:
         assert metrics["latency_per_op"] == pytest.approx(78.05)
 
     def test_parses_throughput_with_m_unit(self, monkeypatch):
-        stdout = (
-            "Summary: throughput 12.82 ± 0.05 M ops/s, "
-            "latency 78.05 ns/op\n"
-        )
+        stdout = "Summary: throughput 12.82 ± 0.05 M ops/s, " "latency 78.05 ns/op\n"
 
         def fake_run(cmd, **kwargs):
             return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
@@ -54,10 +48,7 @@ class TestLpmTrieLookupParsing:
 
     def test_parses_throughput_with_g_unit(self, monkeypatch):
         # Edge case: if bench ever outputs in G ops/s
-        stdout = (
-            "Summary: throughput 2.5 ± 0.01 G ops/s, "
-            "latency 0.40 ns/op\n"
-        )
+        stdout = "Summary: throughput 2.5 ± 0.01 G ops/s, " "latency 0.40 ns/op\n"
 
         def fake_run(cmd, **kwargs):
             return SimpleNamespace(stdout=stdout, stderr="", returncode=0)

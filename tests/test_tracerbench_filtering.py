@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 from preemptirq_benchmark.benchmarks import BenchmarkResult
-from preemptirq_benchmark.report import build_report, display_report, should_exclude_tracerbench_metric
+from preemptirq_benchmark.report import (
+    build_report,
+    display_report,
+    should_exclude_tracerbench_metric,
+)
 
 
 class TestShouldExcludeTracerbenchMetric:

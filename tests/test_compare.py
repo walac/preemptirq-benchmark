@@ -228,9 +228,7 @@ class TestBuildComparisonData:
         )
         float_report = build_report([float_result])
 
-        data = build_comparison_data(
-            [base, int_report, float_report], ["base", "ints", "floats"]
-        )
+        data = build_comparison_data([base, int_report, float_report], ["base", "ints", "floats"])
 
         cycles = data["benchmarks"]["hackbench"]["perf:cycles"]
         assert cycles["comparisons"]["ints"]["other_is_integer"] is True
@@ -294,9 +292,7 @@ class TestDisplayComparisonData:
         captured = capsys.readouterr()
         assert json.loads(captured.out) == data
 
-    def test_perf_counters_ordered_after_metrics_like_compare_reports(
-        self, tmp_path, capsys
-    ):
+    def test_perf_counters_ordered_after_metrics_like_compare_reports(self, tmp_path, capsys):
         # Regression test: compare_reports always lists all metrics
         # before all perf counters (two separate table sections), but
         # display_comparison_data used to sort every bench_data key
@@ -383,9 +379,7 @@ class TestDisplayComparisonData:
         )
         s_report = build_report([s_result])
 
-        data = build_comparison_data(
-            [base, ms_report, s_report], ["base", "ms_run", "s_run"]
-        )
+        data = build_comparison_data([base, ms_report, s_report], ["base", "ms_run", "s_run"])
         display_comparison_data(data, "ascii")
 
         captured = capsys.readouterr()

@@ -413,9 +413,11 @@ def display_comparison_data(
                 base_mean = mcmp.get("base_mean")
                 row = [
                     metric_name,
-                    format_perf_mean_value(base_mean, is_integer)
-                    if base_mean is not None
-                    else "N/A",
+                    (
+                        format_perf_mean_value(base_mean, is_integer)
+                        if base_mean is not None
+                        else "N/A"
+                    ),
                 ]
                 for label in compared_labels:
                     entry = comparisons.get(label)
