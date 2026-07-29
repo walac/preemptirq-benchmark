@@ -26,7 +26,6 @@ htmlcov/
 .nox/
 
 # uv / pyenv
-uv.lock
 .python-version
 
 # IDE
