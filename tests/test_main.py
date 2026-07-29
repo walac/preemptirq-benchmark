@@ -355,7 +355,7 @@ class TestPerfStatEvents:
         bench = _FakeBenchmarkWithPerfStat()
         captured_events: list[list[str]] = []
 
-        def fake_run_with_perf_stat(cmd, events=None):
+        def fake_run_with_perf_stat(cmd, events: list[str]):
             captured_events.append(events)
             import subprocess
 
@@ -394,7 +394,7 @@ class TestPerfStatEvents:
         bench = _FakeBenchmarkWithPerfStat()
         captured_events: list[list[str]] = []
 
-        def fake_run_with_perf_stat(cmd, events=None):
+        def fake_run_with_perf_stat(cmd, events: list[str]):
             captured_events.append(events)
             import subprocess
 
@@ -433,7 +433,7 @@ class TestPerfStatEvents:
         bench = _FakeBenchmarkWithPerfStat()
         captured_events: list[list[str]] = []
 
-        def fake_run_with_perf_stat(cmd, events=None):
+        def fake_run_with_perf_stat(cmd, events: list[str]):
             captured_events.append(events)
             import subprocess
 
