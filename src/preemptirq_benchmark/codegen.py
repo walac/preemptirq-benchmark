@@ -811,11 +811,26 @@ def _summary_to_table_data(summary: Summary) -> tuple[list[str], list[list[str]]
     return ["Metric", "Value"], rows
 
 
+def _distribution_to_table_data(summary: Summary) -> tuple[list[str], list[list[str]]]:
+    s = summary
+    rows: list[list[str]] = [
+        ["Min", f"{s.dist_min:.1f}"],
+        ["P25", f"{s.dist_p25:.1f}"],
+        ["Median", f"{s.dist_median:.1f}"],
+        ["P75", f"{s.dist_p75:.1f}"],
+        ["P95", f"{s.dist_p95:.1f}"],
+        ["Max", f"{s.dist_max:.1f}"],
+    ]
+    return ["Stat", "Value"], rows
+
+
 def output_txt(rows: list[CompareRow], summary: Summary) -> str:
     headers, table_rows = _rows_to_table_data(rows)
     result = format_table("Tracepoint Code Generation Overhead", headers, table_rows, "txt")
     sh, sr = _summary_to_table_data(summary)
     result += format_table("Summary", sh, sr, "txt")
+    dh, dr = _distribution_to_table_data(summary)
+    result += format_table("Overhead Distribution (instructions/call)", dh, dr, "txt")
     return result
 
 

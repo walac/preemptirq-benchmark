@@ -11,6 +11,7 @@ from preemptirq_benchmark.codegen import (
     build_comparison,
     empty_result_reasons,
     extract_function_data,
+    output_txt,
 )
 
 
@@ -342,6 +343,32 @@ class TestEmptyResultReasons:
         assert len(reasons) == 2
         assert any("not present in both builds" in r for r in reasons)
         assert any("filtered by inlining" in r for r in reasons)
+
+
+class TestOutputTxt:
+    def test_includes_overhead_distribution_table(self):
+        # Two functions with distinct avg-per-call overhead (5.0 and 15.0)
+        # so Min/Median/Max diverge, proving the printed values line up
+        # with the right labels rather than all collapsing to one number.
+        # Base sizes and diffs are kept below the inlining-suspect thresholds
+        # (MAX_DIFF_PER_CALL / MAX_PCT_CHANGE) so both rows count toward the
+        # distribution.
+        target_data = {
+            "low": FuncTrace(insn_count=40, calls={"trace_x": 2}),
+            "high": FuncTrace(insn_count=60, calls={"trace_x": 2}),
+        }
+        base_data = {"low": FuncTrace(insn_count=30), "high": FuncTrace(insn_count=30)}
+        rows, summary = build_comparison(target_data, base_data)
+        assert summary.dist_min == pytest.approx(5.0)
+        assert summary.dist_median == pytest.approx(10.0)
+        assert summary.dist_max == pytest.approx(15.0)
+
+        text = output_txt(rows, summary)
+        assert "Overhead Distribution" in text
+        assert "| Min    |   5.0 |" in text
+        assert "| Median |  10.0 |" in text
+        assert "| Max    |  15.0 |" in text
+        assert f"{summary.dist_median:.1f}" in text
 
 
 if __name__ == "__main__":
