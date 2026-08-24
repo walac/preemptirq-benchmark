@@ -389,7 +389,13 @@ def build_comparison(
     as likely artefacts of unrelated compiler inlining decisions.
 
     When *filter_inlining* is True, flagged functions are excluded from
-    the report. When False (the default), they are included and marked.
+    the report. When False (the default), they are included and marked
+    in the per-row report, but the returned summary's aggregate totals
+    (``total_base``, ``total_target``, ``total_calls``, ``total_diff``,
+    ``total_pct``, ``avg_per_call``) and overhead distribution always
+    exclude flagged functions regardless of *filter_inlining*, since
+    they are by definition disproportionate outliers that would skew
+    those aggregates.
 
     Args:
         target_data: Per-function trace data from the target build.
@@ -441,16 +447,15 @@ def build_comparison(
         apc = diff / tc if tc > 0 else 0.0
         rows.append(CompareRow(name, base, target, diff, pct, tc, apc, td.breakdown(), suspect))
 
-    total_base = sum(r.base_insns for r in rows)
-    total_target = sum(r.target_insns for r in rows)
+    non_suspect_rows = [r for r in rows if not r.inlining_suspect]
+    total_base = sum(r.base_insns for r in non_suspect_rows)
+    total_target = sum(r.target_insns for r in non_suspect_rows)
     total_diff = total_target - total_base
     total_pct = (total_diff / total_base * 100) if total_base else 0
-    total_calls = sum(r.total_calls for r in rows)
+    total_calls = sum(r.total_calls for r in non_suspect_rows)
     avg_per_call = total_diff / total_calls if total_calls else 0
 
-    per_call_vals = sorted(
-        r.diff / r.total_calls for r in rows if r.total_calls > 0 and not r.inlining_suspect
-    )
+    per_call_vals = sorted(r.diff / r.total_calls for r in non_suspect_rows if r.total_calls > 0)
     n = len(per_call_vals)
     p25 = median = p75 = p95 = 0.0
     if n >= 2:

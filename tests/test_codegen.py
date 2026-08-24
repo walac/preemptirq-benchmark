@@ -245,6 +245,44 @@ class TestBuildComparisonAmbiguousSummary:
         assert summary.functions_ambiguous_base == 0
 
 
+class TestBuildComparisonTotalsExcludeSuspects:
+    # Regression test: totals/avg_per_call previously summed over every
+    # row, including inlining-suspect outliers, while the overhead
+    # distribution right next to them already excluded those same rows
+    # -- a self-contradictory report. Both must now agree.
+
+    def test_totals_and_distribution_exclude_suspect_when_not_filtered(self):
+        target_data = {
+            # Flagged suspect: diff/call (300) exceeds MAX_DIFF_PER_CALL.
+            "suspect": FuncTrace(insn_count=310, calls={"trace_x": 1}),
+            # Ordinary, non-suspect overhead.
+            "clean": FuncTrace(insn_count=105, calls={"trace_x": 1}),
+        }
+        base_data = {
+            "suspect": FuncTrace(insn_count=10),
+            "clean": FuncTrace(insn_count=100),
+        }
+
+        rows, summary = build_comparison(target_data, base_data, filter_inlining=False)
+
+        # filter_inlining=False: suspect row is still present and marked
+        # in the per-row report.
+        assert len(rows) == 2
+        assert any(r.name == "suspect" and r.inlining_suspect for r in rows)
+        assert summary.functions_flagged_inlining == 1
+        assert summary.functions_filtered_inlining == 0
+
+        # But aggregate totals and the distribution reflect only the
+        # non-suspect "clean" row.
+        assert summary.total_base == 100
+        assert summary.total_target == 105
+        assert summary.total_diff == 5
+        assert summary.total_pct == pytest.approx(5.0)
+        assert summary.total_calls == 1
+        assert summary.avg_per_call == pytest.approx(5.0)
+        assert summary.dist_min == summary.dist_max == pytest.approx(5.0)
+
+
 class TestEmptyResultReasons:
     # Regression tests: build_comparison() can return zero rows for
     # reasons that have nothing to do with inlining filtering (e.g. no
