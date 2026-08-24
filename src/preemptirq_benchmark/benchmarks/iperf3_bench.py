@@ -101,7 +101,7 @@ class Iperf3Benchmark(BenchmarkBase):
             raise RuntimeError(f"cannot find expected keys in iperf3 TCP JSON: {e}") from e
 
         udp = subprocess.run(
-            ["iperf3", "-c", "127.0.0.1", "--bidir", "-t", "60", "-u", "-b", "0", "-J"],
+            ["iperf3", "-c", "127.0.0.1", "--bidir", "-t", "10", "-u", "-b", "10G", "-J"],
             capture_output=True,
             text=True,
             check=True,
