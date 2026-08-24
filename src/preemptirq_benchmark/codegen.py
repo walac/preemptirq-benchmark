@@ -425,13 +425,11 @@ def build_comparison(
         pct = (diff / base) * 100
         tc = td.total_calls
 
-        suspect = False
-        if tc > 0 and abs(diff) / tc > MAX_DIFF_PER_CALL:
-            suspect = True
-        elif abs(pct) > MAX_PCT_CHANGE and base >= MIN_BASE_FOR_PCT_CHECK:
-            suspect = True
-        elif diff < 0 and abs(diff) > tc * MAX_SHRINK_PER_CALL:
-            suspect = True
+        suspect = (
+            (tc > 0 and abs(diff) / tc > MAX_DIFF_PER_CALL)
+            or (abs(pct) > MAX_PCT_CHANGE and base >= MIN_BASE_FOR_PCT_CHECK)
+            or (diff < 0 and abs(diff) > tc * MAX_SHRINK_PER_CALL)
+        )
 
         if suspect and filter_inlining:
             skipped_inlining += 1
