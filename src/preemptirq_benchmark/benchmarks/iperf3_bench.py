@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import signal
+import socket
 import subprocess
 import tempfile
 import time
@@ -18,6 +19,10 @@ class Iperf3Benchmark(BenchmarkBase):
     name = "iperf3"
     description = "Networking throughput and jitter"
     default_iterations = 10
+
+    _SERVER_PORT = 5201
+    _SERVER_STARTUP_TIMEOUT_S = 5.0
+    _SERVER_POLL_INTERVAL_S = 0.05
 
     def __init__(self) -> None:
         self.server_proc: subprocess.Popen[str] | None = None
@@ -44,9 +49,10 @@ class Iperf3Benchmark(BenchmarkBase):
         benchmark session. A temp file has no such bound.
 
         Raises:
-            RuntimeError: If the server process has already exited by
-                the time the startup wait completes (e.g. port already
-                in use, or the binary crashed immediately).
+            RuntimeError: If the server process exits before it starts
+                accepting connections (e.g. port already in use, or the
+                binary crashed immediately), or if it doesn't become
+                connectable within the startup timeout.
         """
         self._server_stderr = tempfile.TemporaryFile(mode="w+")
         self.server_proc = subprocess.Popen(
@@ -55,18 +61,35 @@ class Iperf3Benchmark(BenchmarkBase):
             stderr=self._server_stderr,
             text=True,
         )
-        time.sleep(0.5)
         proc = self.server_proc
+        deadline = time.monotonic() + self._SERVER_STARTUP_TIMEOUT_S
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                break
+            try:
+                with socket.create_connection(
+                    ("127.0.0.1", self._SERVER_PORT), timeout=self._SERVER_POLL_INTERVAL_S
+                ):
+                    return
+            except OSError:
+                time.sleep(self._SERVER_POLL_INTERVAL_S)
+
         returncode = proc.poll()
+        self._server_stderr.seek(0)
+        stderr = self._server_stderr.read()
+        self._server_stderr.close()
+        self._server_stderr = None
+        self.server_proc = None
         if returncode is not None:
-            self._server_stderr.seek(0)
-            stderr = self._server_stderr.read()
-            self._server_stderr.close()
-            self._server_stderr = None
-            self.server_proc = None
             raise RuntimeError(
                 f"iperf3 server failed to start (exit code {returncode}): {stderr.strip()}"
             )
+        proc.kill()
+        proc.wait()
+        raise RuntimeError(
+            f"iperf3 server did not become connectable within "
+            f"{self._SERVER_STARTUP_TIMEOUT_S}s: {stderr.strip()}"
+        )
 
     def run_once(self) -> dict[str, float]:
         """Run TCP and UDP bidirectional tests and parse JSON results.

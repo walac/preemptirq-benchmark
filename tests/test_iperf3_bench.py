@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import time
 from types import SimpleNamespace
@@ -144,6 +145,30 @@ class _FakePopen:
     def poll(self) -> int | None:
         return self._returncode
 
+    def kill(self) -> None:
+        self._returncode = -9
+
+    def wait(self, timeout: float | None = None) -> int | None:
+        return self._returncode
+
+
+class _FakeSocket:
+    """Minimal stand-in for the socket returned by socket.create_connection."""
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+
+def _fake_create_connection_refused(*args, **kwargs):
+    raise OSError("connection refused")
+
+
+def _fake_create_connection_accepts(*args, **kwargs):
+    return _FakeSocket()
+
 
 def _fake_popen_factory(returncode: int | None, stderr_text: str = ""):
     """Build a fake Popen that writes into the real stderr= file setup() passes.
@@ -179,6 +204,7 @@ class TestSetupServerStartupFailure:
                 stderr_text="iperf3: error - unable to start listener for connections: Address already in use\n",
             ),
         )
+        monkeypatch.setattr(socket, "create_connection", _fake_create_connection_refused)
         monkeypatch.setattr(time, "sleep", lambda *_: None)
 
         bench = Iperf3Benchmark()
@@ -195,6 +221,7 @@ class TestSetupServerStartupFailure:
         # implementation, since it silently treats a clean exit (0) as
         # "still running". The check must use `is not None`.
         monkeypatch.setattr(subprocess, "Popen", _fake_popen_factory(returncode=0))
+        monkeypatch.setattr(socket, "create_connection", _fake_create_connection_refused)
         monkeypatch.setattr(time, "sleep", lambda *_: None)
 
         bench = Iperf3Benchmark()
@@ -205,8 +232,28 @@ class TestSetupServerStartupFailure:
         assert bench.server_proc is None
         assert bench._server_stderr is None
 
-    def test_does_not_raise_when_server_is_still_running(self, monkeypatch):
+    def test_raises_when_server_never_becomes_connectable(self, monkeypatch):
+        # Regression test: setup() previously did a single flat sleep(0.5)
+        # and never actually verified the server was accepting
+        # connections, so a slow-starting server (e.g. under load) would
+        # let setup() succeed and the first run_once() connect would fail
+        # with a confusing, unrelated error instead.
         monkeypatch.setattr(subprocess, "Popen", _fake_popen_factory(returncode=None))
+        monkeypatch.setattr(socket, "create_connection", _fake_create_connection_refused)
+        monkeypatch.setattr(time, "sleep", lambda *_: None)
+        monkeypatch.setattr(Iperf3Benchmark, "_SERVER_STARTUP_TIMEOUT_S", 0.0)
+
+        bench = Iperf3Benchmark()
+
+        with pytest.raises(RuntimeError, match="did not become connectable"):
+            bench.setup()
+
+        assert bench.server_proc is None
+        assert bench._server_stderr is None
+
+    def test_does_not_raise_once_server_becomes_connectable(self, monkeypatch):
+        monkeypatch.setattr(subprocess, "Popen", _fake_popen_factory(returncode=None))
+        monkeypatch.setattr(socket, "create_connection", _fake_create_connection_accepts)
         monkeypatch.setattr(time, "sleep", lambda *_: None)
 
         bench = Iperf3Benchmark()
