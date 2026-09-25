@@ -327,14 +327,9 @@ class TestCmdRun:
         assert fail_bench.name not in report["results"]
 
     def test_get_command_failure_still_saves_partial_result(self, monkeypatch, tmp_path):
-        # Regression test: the standalone bench.get_command() call
-        # (used for perf-stat wrapping after the iteration loop) sat
-        # inside the outer try but was not covered by any except --
-        # only the inner per-iteration except caught run_once()
-        # failures. A RuntimeError from get_command() (as
-        # KernelCompileBenchmark's get_command() can now raise via
-        # run_make("clean")) used to propagate uncaught, discarding
-        # this benchmark's already-successful iterations too.
+        # get_command() can raise (KernelCompileBenchmark does when its
+        # clean command fails). A perf-stat failure must not discard the
+        # completed workload iteration.
         bench = _FakeBenchmarkGetCommandFails()
 
         monkeypatch.setattr(main_module, "import_all", lambda: None)
@@ -450,6 +445,46 @@ class _FakeBenchmarkWithPerfStat(BenchmarkBase):
 
 
 class TestPerfStatEvents:
+    def test_collects_perf_counters_for_every_completed_iteration(self, monkeypatch, tmp_path):
+        bench = _FakeBenchmarkWithPerfStat()
+        perf_runs = 0
+
+        def fake_run_with_perf_stat(cmd, events: list[str]):
+            nonlocal perf_runs
+            perf_runs += 1
+            import subprocess
+
+            return subprocess.CompletedProcess(cmd, 0), {"cycles": perf_runs}
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+        monkeypatch.setattr(main_module, "run_with_perf_stat", fake_run_with_perf_stat)
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=True,
+            perf_stat_events=None,
+            iterations=3,
+            duration=None,
+            isolated_cpus_only=False,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        report = load_report(str(tmp_path / "report.json"))
+        assert report["results"][bench.name]["perf_counters"]["cycles"]["values"] == [1, 2, 3]
+
     def test_extra_events_appended_to_defaults(self, monkeypatch, tmp_path):
         from preemptirq_benchmark.perf_stat import DEFAULT_EVENTS
 

@@ -231,8 +231,9 @@ def compare_reports(
                 "perf_counters",
                 label_fn=lambda name: f"perf:{name}",
                 format_base=format_perf_counter_mean,
-                format_delta=lambda bd, od: format_delta_pct(
-                    compute_delta_pct(bd["mean"], od["mean"])
+                format_delta=lambda bd, od: (
+                    f"{format_delta_pct(compute_delta_pct(bd['mean'], od['mean']))} "
+                    f"{mann_whitney(bd.get('values', []), od.get('values', [])).label}"
                 ),
                 format_abs=format_perf_counter_mean,
                 exclude_stats=None,
@@ -257,10 +258,9 @@ def build_comparison_data(
 
     Returns:
         Dict with per-benchmark, per-metric delta percentages and
-        significance results.  Perf counters are included under keys
-        prefixed with "perf:" (e.g. "perf:cycles") with a delta
-        percentage but, matching the table output, no significance
-        test.
+        significance results. Perf counters are included under keys
+        prefixed with "perf:" (e.g. "perf:cycles") with the same
+        comparison fields as benchmark metrics, except for units.
     """
     if len(labels) != len(reports) or len(set(labels)) != len(labels):
         raise ValueError("comparison labels must be unique and match the report count")
@@ -368,9 +368,13 @@ def build_comparison_data(
                     }
                     continue
                 pct = compute_delta_pct(base_cdata["mean"], other_cdata["mean"])
+                sig = mann_whitney(base_cdata["values"], other_cdata["values"])
                 counter_cmp["comparisons"][labels[i + 1]] = {
                     "delta_pct": round(pct, 2),
                     "other_mean": other_cdata["mean"],
+                    "p_value": round(sig.p_value, 4) if sig.p_value is not None else None,
+                    "significant": sig.label,
+                    "test_status": sig.status,
                 }
 
             bench_data[f"perf:{counter_name}"] = counter_cmp

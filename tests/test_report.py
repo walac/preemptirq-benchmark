@@ -104,6 +104,18 @@ class TestBuildReport:
         assert cdata["sample_count"] == 1
         assert cdata["values"] == [1000000]
 
+    def test_perf_counters_have_descriptive_stats(self):
+        result = make_result(perf_counters={"cycles": [1000000, 1000100]})
+        report = build_report([result])
+        cdata = report["results"]["hackbench"]["perf_counters"]["cycles"]
+
+        assert cdata["median"] == 1000050.0
+        assert cdata["stddev"] == pytest.approx(70.71067811865476)
+        assert cdata["ci_low"] is not None
+        assert cdata["ci_high"] is not None
+        assert cdata["ci_pct"] == 95.0
+        assert cdata["n"] == 2
+
     def test_multiple_benchmarks(self):
         r1 = make_result(name="hackbench")
         r2 = make_result(
@@ -259,3 +271,11 @@ class TestDisplayReport:
 
         captured = capsys.readouterr()
         assert "123.4568" in captured.out
+
+    def test_ascii_output_includes_perf_counter_uncertainty(self, capsys):
+        result = make_result(perf_counters={"cycles": [1000000, 1000100]})
+        report = build_report([result])
+        display_report(report, "ascii")
+
+        captured = capsys.readouterr()
+        assert "70.711" in captured.out

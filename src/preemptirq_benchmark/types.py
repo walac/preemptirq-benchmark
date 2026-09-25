@@ -18,6 +18,12 @@ class MetricData(TypedDict):
 class PerfCounterData(TypedDict):
     values: list[int | float]
     mean: float
+    median: float
+    stddev: float | None
+    ci_low: float | None
+    ci_high: float | None
+    ci_pct: float
+    n: int
     sample_count: int
 
 

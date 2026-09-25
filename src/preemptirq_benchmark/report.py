@@ -149,11 +149,17 @@ def build_report(
         for counter_name, counts in result.perf_counters.items():
             if not counts:
                 continue
-            mean = sum(counts) / len(counts)
+            stats = compute_stats([float(count) for count in counts], ci_pct=ci_pct)
             entry["perf_counters"][counter_name] = {
                 "values": counts,
-                "mean": mean,
-                "sample_count": len(counts),
+                "mean": stats.mean,
+                "median": stats.median,
+                "stddev": stats.stddev,
+                "ci_low": stats.ci_low,
+                "ci_high": stats.ci_high,
+                "ci_pct": stats.ci_pct,
+                "n": stats.n,
+                "sample_count": stats.n,
             }
 
         report["results"][result.name] = entry
@@ -271,13 +277,25 @@ def display_report(
 
         if bench_data.get("perf_counters"):
             for cname, cdata in bench_data["perf_counters"].items():
+                is_integer = perf_counter_is_integer(cdata["values"])
+                median = (
+                    format_perf_mean_value(cdata["median"], is_integer) if "median" in cdata else ""
+                )
+                stddev = cdata.get("stddev")
+                ci_low = cdata.get("ci_low")
+                ci_high = cdata.get("ci_high")
                 rows.append(
                     [
                         f"perf:{cname}",
                         format_perf_counter_mean(cdata),
-                        "",
-                        "",
-                        "",
+                        median,
+                        f"{stddev:.3f}" if stddev is not None else "",
+                        (
+                            f"[{format_perf_mean_value(ci_low, is_integer)}, "
+                            f"{format_perf_mean_value(ci_high, is_integer)}]"
+                            if ci_low is not None and ci_high is not None
+                            else ""
+                        ),
                     ]
                 )
 

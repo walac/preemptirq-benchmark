@@ -256,17 +256,19 @@ class TestBuildComparisonData:
         assert count["base_mean"] is not None
         assert count["unit"] == ""
 
-    def test_perf_counters_included(self):
-        base = make_report(perf_counters={"cycles": [1000000]})
-        patched = make_report(perf_counters={"cycles": [1100000]})
+    def test_perf_counter_comparison_includes_significance(self):
+        base = make_report(perf_counters={"cycles": [1000000, 1000100, 1000200, 1000300]})
+        patched = make_report(perf_counters={"cycles": [1100000, 1100100, 1100200, 1100300]})
 
         data = build_comparison_data([base, patched], ["baseline", "patched"])
 
         cycles = data["benchmarks"]["hackbench"]["perf:cycles"]
-        assert cycles["base_mean"] == 1000000.0
-        assert cycles["comparisons"]["patched"]["other_mean"] == 1100000.0
+        assert cycles["base_mean"] == 1000150.0
+        assert cycles["comparisons"]["patched"]["other_mean"] == 1100150.0
         assert cycles["comparisons"]["patched"]["delta_pct"] > 0
-        assert "p_value" not in cycles["comparisons"]["patched"]
+        assert cycles["comparisons"]["patched"]["p_value"] == pytest.approx(0.0286)
+        assert cycles["comparisons"]["patched"]["significant"] == "(*)"
+        assert cycles["comparisons"]["patched"]["test_status"] == "tested"
 
     def test_fractional_perf_counter_preserved(self):
         base = make_report(perf_counters={"task-clock": [123.456789]})
@@ -558,10 +560,9 @@ class TestDisplayComparisonData:
         assert "perf:cpu/event=0x3c/max" in captured.out
 
     def test_perf_counter_delta_does_not_crash(self, capsys):
-        # Regression test: build_comparison_data omits "significant" for
-        # perf counter deltas (no significance test is run for them),
-        # so display_comparison_data must not KeyError on "significant"
-        # when re-displaying a perf:* row that has a "delta_pct".
+        # Regression test: a one-sample perf counter has an explicit
+        # insufficient-samples result, which display_comparison_data must
+        # render without a KeyError.
         base = make_report(perf_counters={"cycles": [1000000]})
         patched = make_report(perf_counters={"cycles": [1100000]})
         data = build_comparison_data([base, patched], ["baseline", "patched"])

@@ -350,28 +350,33 @@ def cmd_run(args: argparse.Namespace) -> None:
             for i in range(iters):
                 try:
                     metrics = bench.run_once()
-
-                    for mname, mval in metrics.items():
-                        result.metrics.setdefault(mname, []).append(mval)
-                    result.iterations += 1
                 except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
                     print(
                         f"\nWarning: Iteration {i+1} of {bench.name} failed: {e}",
                         file=sys.stderr,
                     )
+                else:
+                    for mname, mval in metrics.items():
+                        result.metrics.setdefault(mname, []).append(mval)
+                    result.iterations += 1
+
+                    try:
+                        if use_perf and bench.supports_perf_stat:
+                            cmd = bench.get_command()
+                            if cmd:
+                                _, counters = run_with_perf_stat(cmd, events=perf_events)
+                                for cname, cval in counters.items():
+                                    result.perf_counters.setdefault(cname, []).append(cval)
+                    except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+                        print(
+                            f"\nWarning: perf stat for iteration {i+1} of {bench.name} failed: {e}",
+                            file=sys.stderr,
+                        )
 
                 print_progress(bench.name, i + 1, iters, idx, total)
 
             if result.iterations > 0:
                 result.config = bench.get_workload_config()
-
-            if use_perf and bench.supports_perf_stat and result.iterations > 0:
-                cmd = bench.get_command()
-                if cmd:
-                    print(f"  Collecting perf stat for {bench.name}...")
-                    _, counters = run_with_perf_stat(cmd, events=perf_events)
-                    for cname, cval in counters.items():
-                        result.perf_counters[cname] = [cval]
         except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
             print(f"\nWarning: {bench.name} failed: {e}", file=sys.stderr)
         finally:
