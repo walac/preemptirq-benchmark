@@ -192,6 +192,21 @@ class TestMannWhitney:
         assert result.status == "tested"
         assert result.p_value is not None
 
+    def test_ties_use_exact_method_not_asymptotic(self):
+        # [BUG-ST-01 follow-up] mannwhitneyu() defaults to method="auto",
+        # which silently switches to the asymptotic normal approximation
+        # whenever ties are present -- invalidating the exact test's
+        # p-value floor that _MIN_COMB_FOR_TESTABLE relies on. With the
+        # tied value 4, the asymptotic approximation reports p=0.0421
+        # (significant), but the true exact permutation test reports
+        # p=0.0571 (not significant).
+        result = mann_whitney([1.0, 2.0, 3.0, 4.0], [4.0, 5.0, 6.0, 7.0])
+
+        assert result.status == "tested"
+        assert result.p_value == pytest.approx(0.05714285714285714)
+        assert not result.significant_05
+        assert result.label == "(ns)"
+
     def test_identical_samples(self):
         result = mann_whitney([5.0, 5.0, 5.0, 5.0], [5.0, 5.0, 5.0, 5.0])
 

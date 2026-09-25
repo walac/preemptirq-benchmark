@@ -205,7 +205,7 @@ def mann_whitney(base: list[float], other: list[float]) -> SignificanceResult:
         )
 
     try:
-        stat, p = mannwhitneyu(base, other, alternative="two-sided")
+        stat, p = mannwhitneyu(base, other, alternative="two-sided", method="exact")
     except ValueError:
         return _unavailable_significance()
 
