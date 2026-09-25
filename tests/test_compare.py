@@ -32,6 +32,12 @@ def make_report(
 
 
 class TestBuildComparisonData:
+    def test_rejects_duplicate_labels_before_json_keys_collide(self):
+        reports = [make_report(values=[1.0]), make_report(values=[2.0])]
+
+        with pytest.raises(ValueError, match="unique"):
+            build_comparison_data(reports, ["report", "report"])
+
     def test_warns_about_mismatched_latency_workloads_in_saved_data(self, capsys):
         base = make_report(name="cyclictest")
         other = make_report(name="cyclictest")
@@ -601,6 +607,66 @@ class TestDisplayComparisonData:
 
 
 class TestCompareReports:
+    def test_duplicate_stems_keep_all_targets_in_saved_json(self, tmp_path, capsys):
+        paths = []
+        for parent, value in [("base", 1.0), ("v1", 2.0), ("v2", 3.0)]:
+            directory = tmp_path / parent
+            directory.mkdir()
+            paths.append(
+                str(save_report(make_report(values=[value]), str(directory / "report.json")))
+            )
+
+        compare_reports(paths, "json")
+        data = json.loads(capsys.readouterr().out)
+
+        assert data["base"] == "base/report"
+        assert data["compared"] == ["v1/report", "v2/report"]
+        comparisons = data["benchmarks"]["hackbench"]["time_seconds"]["comparisons"]
+        assert set(comparisons) == {"v1/report", "v2/report"}
+        assert comparisons["v1/report"]["other_mean"] == 2.0
+        assert comparisons["v2/report"]["other_mean"] == 3.0
+
+        display_comparison_data(json.loads(json.dumps(data)), "txt")
+        output = capsys.readouterr().out
+        assert "v1/report" in output
+        assert "v2/report" in output
+
+        compare_reports(paths, "txt")
+        direct_output = capsys.readouterr().out
+        assert "v1/report" in direct_output
+        assert "v2/report" in direct_output
+
+    def test_same_parent_name_uses_longer_unique_suffix(self, tmp_path, capsys):
+        paths = []
+        for parent in ("a", "b"):
+            directory = tmp_path / parent / "v1"
+            directory.mkdir(parents=True)
+            paths.append(str(save_report(make_report(), str(directory / "report.json"))))
+
+        compare_reports(paths, "json")
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["base"] == "a/v1/report"
+        assert data["compared"] == ["b/v1/report"]
+
+    def test_same_stem_and_directory_uses_extension(self, tmp_path, capsys):
+        base = str(save_report(make_report(values=[1.0]), str(tmp_path / "run.json")))
+        other = str(save_report(make_report(values=[2.0]), str(tmp_path / "run.txt")))
+
+        compare_reports([base, other], "json")
+
+        data = json.loads(capsys.readouterr().out)
+        assert data["base"] == "run.json"
+        assert data["compared"] == ["run.txt"]
+        comparisons = data["benchmarks"]["hackbench"]["time_seconds"]["comparisons"]
+        assert list(comparisons) == ["run.txt"]
+
+    def test_repeated_input_path_is_rejected(self, tmp_path):
+        path = str(save_report(make_report(), str(tmp_path / "report.json")))
+
+        with pytest.raises(SystemExit, match="cannot distinguish"):
+            compare_reports([path, path], "json")
+
     def test_too_few_reports(self):
         with pytest.raises(SystemExit, match="at least 2"):
             compare_reports(["only_one.json"], "ascii")

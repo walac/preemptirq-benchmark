@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -24,6 +25,37 @@ from preemptirq_benchmark.types import Report
 
 LATENCY_BENCHMARKS = ("cyclictest", "rtla")
 WORKLOAD_KEYS = ("duration", "isolated_cpus_only", "cpu_selection", "cpus")
+
+
+def _unique_report_labels(paths: list[str]) -> list[str]:
+    """Use short path labels, adding extensions or parents only as needed."""
+    report_paths = [Path(path) for path in paths]
+    names = [path.stem for path in report_paths]
+    parent_parts = [path.parent.parts for path in report_paths]
+    depths = [0] * len(paths)
+    while True:
+        labels = [
+            "/".join((*parent_parts[i][-depths[i] :], names[i])) if depths[i] else names[i]
+            for i in range(len(paths))
+        ]
+        duplicates = {label for label, count in Counter(labels).items() if count > 1}
+        if not duplicates:
+            return labels
+        extended = False
+        for label in duplicates:
+            group = [i for i, candidate in enumerate(labels) if candidate == label]
+            if len({report_paths[i].name for i in group}) > 1:
+                for i in group:
+                    if names[i] != report_paths[i].name:
+                        names[i] = report_paths[i].name
+                        extended = True
+            else:
+                for i in group:
+                    if depths[i] < len(parent_parts[i]):
+                        depths[i] += 1
+                        extended = True
+        if not extended:
+            raise SystemExit("Error: cannot distinguish repeated report paths")
 
 
 def _comparable_workload_value(key: str, value: Any) -> Any:
@@ -138,19 +170,19 @@ def compare_reports(
 
     Raises:
         SystemExit: If fewer than 2 paths are given, a file is invalid,
-            or a file holds comparison output instead of a report.
+            a file holds comparison output instead of a report, or the
+            paths cannot be given distinct labels.
     """
     if len(paths) < 2:
         raise SystemExit("Error: compare requires at least 2 report files")
 
     reports = []
-    labels = []
     for p in paths:
         data = load_report(p)
         if is_comparison_data(data):
             raise SystemExit(f"Error: {p} is comparison output, not a benchmark report")
         reports.append(cast(Report, data))
-        labels.append(Path(p).stem)
+    labels = _unique_report_labels(paths)
 
     if fmt == "json":
         print(
@@ -219,7 +251,7 @@ def build_comparison_data(
 
     Args:
         reports: List of loaded report dicts, first is baseline.
-        labels: Display names for each report (from filenames).
+        labels: Unique display names for each report.
         tracerbench_exclude_stats: List of statistic names to exclude
             from tracerbench metrics (e.g., ["median", "max"]).
 
@@ -230,6 +262,9 @@ def build_comparison_data(
         percentage but, matching the table output, no significance
         test.
     """
+    if len(labels) != len(reports) or len(set(labels)) != len(labels):
+        raise ValueError("comparison labels must be unique and match the report count")
+
     base = reports[0]
     data: dict[str, Any] = {
         "base": labels[0],
