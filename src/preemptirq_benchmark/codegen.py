@@ -112,17 +112,11 @@ def _canonical_symbol(symbol: str) -> str:
 # conditional branch as a trace-helper call if it ever happened to
 # target a labeled address.
 #
-# The bare 'b'/'j' alternatives require a word boundary on BOTH sides —
-# leading as well as trailing. The trailing \b alone is not enough: since
-# this is a search() over the whole line rather than a match() anchored to
-# the start of the mnemonic, an unanchored 'b'/'j' can otherwise match the
-# tail end of a longer, unrelated token (e.g. the 'b' in 'jb', a real x86
-# conditional jump, or in a size-suffixed instruction like 'movb'/'cmpb'
-# that objdump may still annotate with a "# <symbol>" comment for an
-# unrelated RIP-relative operand). The leading \b anchors 'b'/'j' (and
-# every other alternative) to the start of a token, so only a standalone
-# mnemonic can match — 'jb' and 'movb' no longer match, while 'call',
-# 'jmp', a bare 'b', and a bare 'j' still do.
+# The expression is matched at the start of the parsed instruction field,
+# rather than searched across the whole objdump line. That keeps the
+# alternatives in the mnemonic position: a %bl x86 register operand, or
+# 'b' at the end of 'jb'/'movb', cannot be mistaken for a branch mnemonic
+# because a later "# <symbol>" annotation appears on the same line.
 #
 # 'b' additionally excludes a following '.' via a negative lookahead:
 # AArch64 spells its conditional branches "b.<cond>" (b.eq, b.ne, b.lt,
@@ -132,7 +126,7 @@ def _canonical_symbol(symbol: str) -> str:
 # The plain, dot-less unconditional "b <symbol>" form that AArch64 also
 # has is unaffected by the lookahead and still matches.
 # The symbol name is captured in group 1 and checked against TRACE_HELPERS.
-CALL_RE = re.compile(r"\b(?:callq?|bl|brasl|jalr?|jmpq?|b(?!\.)|j)\b.*<([^>]+)>")
+CALL_RE = re.compile(r"^(?:callq?|bl|brasl|jalr?|jmpq?|b(?!\.)|j)\b.*?<([^>]+)>")
 
 # NOP_RE — matches x86 NOP instruction mnemonics used for alignment
 # padding between functions.  These include single-byte ``nop``,
@@ -401,10 +395,13 @@ def extract_function_data(
             tail = line[insn_match.end() :]
             fields = [f for f in tail.split("\t") if f.strip()]
             mnemonic = ""
+            instruction = ""
             if fields:
+                instruction = "\t".join(fields).strip()
                 first = fields[0].strip()
                 if len(fields) > 1 and RAW_BYTES_RE.fullmatch(first):
                     first = fields[1].strip()
+                    instruction = "\t".join(fields[1:]).strip()
                 mnemonic = first
             if INT3_RE.match(mnemonic):
                 trailing_int3 += 1
@@ -416,7 +413,7 @@ def extract_function_data(
                 trailing_nops = 0
                 trailing_int3 = 0
             if track_trace_calls:
-                cm = CALL_RE.search(line)
+                cm = CALL_RE.match(instruction)
                 if cm and (helper := _canonical_symbol(cm.group(1))) in TRACE_HELPERS:
                     current_data.calls[helper] += 1
 

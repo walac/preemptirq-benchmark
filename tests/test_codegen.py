@@ -249,6 +249,17 @@ class TestTailCallDetection:
         result, _ = _extract(monkeypatch, lines, track_trace_calls=True)
         assert "caller" not in result
 
+    def test_x86_bl_register_operand_not_miscounted_as_arm_call(self, monkeypatch):
+        # The ARM/PowerPC "bl" alternative must only match an instruction
+        # mnemonic. In x86 AT&T syntax, %bl is a register operand, and
+        # objdump may annotate its RIP-relative destination with a symbol.
+        lines = [
+            "0000000000000000 <caller>:",
+            "   0:\tmov    %bl,0x0(%rip)        # <trace_local_irq_restore>",
+        ]
+        result, _ = _extract(monkeypatch, lines, track_trace_calls=True)
+        assert "caller" not in result
+
     def test_aarch64_dotted_conditional_branch_not_miscounted_as_call(self, monkeypatch):
         # Regression test: AArch64 spells conditional branches "b.<cond>"
         # (b.eq, b.ne, ...). Since "." is a non-word character, a trailing
