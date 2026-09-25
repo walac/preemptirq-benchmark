@@ -41,9 +41,9 @@ class TestComputeStats:
 
         assert s.mean == 42.0
         assert s.median == 42.0
-        assert s.stddev == 0.0
-        assert s.ci_low == 42.0
-        assert s.ci_high == 42.0
+        assert s.stddev is None
+        assert s.ci_low is None
+        assert s.ci_high is None
         assert s.n == 1
 
     def test_two_elements(self):

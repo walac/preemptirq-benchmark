@@ -13,18 +13,18 @@ class DescriptiveStats:
     Attributes:
         mean: Arithmetic mean.
         median: Middle value (or average of two middle values).
-        stddev: Sample standard deviation (Bessel's correction).
-        ci_low: Lower bound of the confidence interval.
-        ci_high: Upper bound of the confidence interval.
+        stddev: Sample standard deviation, unavailable for one observation.
+        ci_low: Lower confidence bound, unavailable for one observation.
+        ci_high: Upper confidence bound, unavailable for one observation.
         ci_pct: Confidence level as a percentage (e.g. 95.0).
         n: Number of observations.
     """
 
     mean: float
     median: float
-    stddev: float
-    ci_low: float
-    ci_high: float
+    stddev: float | None
+    ci_low: float | None
+    ci_high: float | None
     ci_pct: float
     n: int
 
@@ -78,16 +78,24 @@ def compute_stats(values: list[float], ci_pct: float = 95.0) -> DescriptiveStats
     else:
         median = (sorted_v[n // 2 - 1] + sorted_v[n // 2]) / 2
 
-    variance = sum((x - mean) ** 2 for x in values) / (n - 1) if n > 1 else 0.0
+    if n == 1:
+        return DescriptiveStats(
+            mean=mean,
+            median=median,
+            stddev=None,
+            ci_low=None,
+            ci_high=None,
+            ci_pct=ci_pct,
+            n=n,
+        )
+
+    variance = sum((x - mean) ** 2 for x in values) / (n - 1)
     stddev = math.sqrt(variance)
 
-    if n > 1:
-        stderr = stddev / math.sqrt(n)
-        alpha = (1 - ci_pct / 100) / 2
-        t_crit = float(t.ppf(1 - alpha, df=n - 1))
-        margin = t_crit * stderr
-    else:
-        margin = 0.0
+    stderr = stddev / math.sqrt(n)
+    alpha = (1 - ci_pct / 100) / 2
+    t_crit = float(t.ppf(1 - alpha, df=n - 1))
+    margin = t_crit * stderr
 
     ci_low = mean - margin
     ci_high = mean + margin

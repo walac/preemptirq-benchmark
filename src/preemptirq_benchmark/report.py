@@ -258,8 +258,12 @@ def display_report(
                     metric_name,
                     f"{mdata['mean']:.2f}{suffix}",
                     f"{mdata['median']:.2f}{suffix}",
-                    f"{mdata['stddev']:.3f}",
-                    f"[{mdata['ci_low']:.2f}, {mdata['ci_high']:.2f}]",
+                    f"{mdata['stddev']:.3f}" if mdata["stddev"] is not None else "N/A",
+                    (
+                        f"[{mdata['ci_low']:.2f}, {mdata['ci_high']:.2f}]"
+                        if mdata["ci_low"] is not None and mdata["ci_high"] is not None
+                        else "N/A"
+                    ),
                 ]
             )
 

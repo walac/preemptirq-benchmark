@@ -58,6 +58,22 @@ class TestBuildReport:
         assert mdata["unit"] == "s"
         assert mdata["n"] == 3
 
+    def test_single_observation_has_unavailable_uncertainty(self):
+        result = make_result(
+            name="cyclictest",
+            metrics={"max_latency_us": [42.0]},
+            units={"max_latency_us": "us"},
+            iterations=1,
+        )
+        report = build_report([result])
+        metric = report["results"]["cyclictest"]["metrics"]["max_latency_us"]
+
+        assert metric["mean"] == 42.0
+        assert metric["median"] == 42.0
+        assert metric["stddev"] is None
+        assert metric["ci_low"] is None
+        assert metric["ci_high"] is None
+
     def test_ci_pct_propagated(self):
         result = make_result()
         report = build_report([result], ci_pct=99.0)
@@ -157,6 +173,36 @@ class TestSaveLoadReport:
 
 
 class TestDisplayReport:
+    def test_single_observation_json_has_null_uncertainty(self, capsys):
+        result = make_result(
+            name="cyclictest",
+            metrics={"max_latency_us": [42.0]},
+            units={"max_latency_us": "us"},
+            iterations=1,
+        )
+        display_report(build_report([result]), "json")
+
+        metric = json.loads(capsys.readouterr().out)["results"]["cyclictest"]["metrics"][
+            "max_latency_us"
+        ]
+        assert metric["stddev"] is None
+        assert metric["ci_low"] is None
+        assert metric["ci_high"] is None
+
+    @pytest.mark.parametrize("fmt", ["ascii", "txt", "markdown"])
+    def test_single_observation_renders_uncertainty_unavailable(self, capsys, fmt):
+        result = make_result(
+            name="cyclictest",
+            metrics={"max_latency_us": [42.0]},
+            units={"max_latency_us": "us"},
+            iterations=1,
+        )
+        display_report(build_report([result]), fmt)
+
+        output = capsys.readouterr().out
+        assert output.count("N/A") == 2
+        assert "42.00 us" in output
+
     def test_ascii_output(self, capsys):
         result = make_result()
         report = build_report([result])

@@ -8,9 +8,9 @@ class MetricData(TypedDict):
     values: list[float]
     mean: float
     median: float
-    stddev: float
-    ci_low: float
-    ci_high: float
+    stddev: float | None
+    ci_low: float | None
+    ci_high: float | None
     ci_pct: float
     n: int
 
