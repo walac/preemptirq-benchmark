@@ -139,8 +139,8 @@ class Iperf3Benchmark(BenchmarkBase):
             metrics["udp_sender_gbps"] = udp_sum["bits_per_second"] / 1e9
             metrics["udp_jitter_ms"] = udp_sum["jitter_ms"]
             metrics["udp_lost_pct"] = udp_sum["lost_percent"]
-            udp_sum_reverse = udp_data["end"]["sum_bidir_reverse"]
-            metrics["udp_receiver_gbps"] = udp_sum_reverse["bits_per_second"] / 1e9
+            udp_received_reverse = udp_data["end"]["sum_received_bidir_reverse"]
+            metrics["udp_receiver_gbps"] = udp_received_reverse["bits_per_second"] / 1e9
         except KeyError as e:
             raise RuntimeError(f"cannot find expected keys in iperf3 UDP JSON: {e}") from e
 

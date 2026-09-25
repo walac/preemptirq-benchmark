@@ -34,18 +34,20 @@ UDP_JSON_WITH_REVERSE = json.dumps(
                 "jitter_ms": 0.07,
                 "lost_percent": 0.2,
             },
+            "sum_received_bidir_reverse": {"bits_per_second": 0.6e9},
         }
     }
 )
 
-UDP_JSON_NO_REVERSE = json.dumps(
+UDP_JSON_NO_REVERSE_RECEIVE = json.dumps(
     {
         "end": {
             "sum": {
                 "bits_per_second": 1.0e9,
                 "jitter_ms": 0.05,
                 "lost_percent": 0.1,
-            }
+            },
+            "sum_bidir_reverse": {"bits_per_second": 0.8e9},
         }
     }
 )
@@ -71,18 +73,16 @@ def _make_fake_run(tcp_stdout: str, udp_stdout: str):
 
 class TestRunOnceBidirReverseParsing:
     def test_extracts_both_forward_and_reverse_udp_throughput(self, monkeypatch):
-        # Regression test: --bidir requests a simultaneous reverse-direction
-        # UDP stream (server -> client), but run_once() previously only
-        # ever read end.sum (the forward direction), never
-        # end.sum_bidir_reverse -- silently dropping half of the
-        # requested bidirectional measurement.
+        # In the reverse UDP stream, sent and received rates differ when
+        # packets are lost. Report the client's received rate, not the
+        # server's offered send rate.
         monkeypatch.setattr(subprocess, "run", _make_fake_run(TCP_JSON, UDP_JSON_WITH_REVERSE))
 
         bench = Iperf3Benchmark()
         metrics = bench.run_once()
 
         assert metrics["udp_sender_gbps"] == pytest.approx(1.0)
-        assert metrics["udp_receiver_gbps"] == pytest.approx(0.8)
+        assert metrics["udp_receiver_gbps"] == pytest.approx(0.6)
         assert metrics["udp_jitter_ms"] == pytest.approx(0.05)
         assert metrics["udp_lost_pct"] == pytest.approx(0.1)
 
@@ -102,15 +102,17 @@ class TestRunOnceBidirReverseParsing:
         assert metrics["tcp_sender_gbps"] == pytest.approx(9.5)
         assert metrics["tcp_receiver_gbps"] == pytest.approx(7.1)
 
-    def test_raises_clear_error_when_reverse_sum_missing(self, monkeypatch):
-        # If iperf3's JSON is missing the reverse-direction summary,
+    def test_raises_clear_error_when_reverse_receive_sum_missing(self, monkeypatch):
+        # If iperf3's JSON is missing the reverse receive summary,
         # the benchmark must fail loudly instead of silently omitting
-        # udp_receiver_gbps.
-        monkeypatch.setattr(subprocess, "run", _make_fake_run(TCP_JSON, UDP_JSON_NO_REVERSE))
+        # udp_receiver_gbps or using the server send rate.
+        monkeypatch.setattr(
+            subprocess, "run", _make_fake_run(TCP_JSON, UDP_JSON_NO_REVERSE_RECEIVE)
+        )
 
         bench = Iperf3Benchmark()
 
-        with pytest.raises(RuntimeError, match="cannot find expected keys in iperf3 UDP JSON"):
+        with pytest.raises(RuntimeError, match="sum_received_bidir_reverse"):
             bench.run_once()
 
     def test_raises_clear_error_when_tcp_reverse_sum_missing(self, monkeypatch):
