@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TypeVar
+from typing import Any, TypeVar
 
 ALL_BENCHMARK_NAMES: list[str] = []
 
@@ -23,6 +23,7 @@ class BenchmarkResult:
             "task-clock") are fractional.  Empty when perf stat is
             disabled or not applicable.
         iterations: Number of completed iterations.
+        config: Effective workload settings for the measured run, when available.
     """
 
     name: str
@@ -30,6 +31,7 @@ class BenchmarkResult:
     units: dict[str, str] = field(default_factory=dict)
     perf_counters: dict[str, list[int | float]] = field(default_factory=dict)
     iterations: int = 0
+    config: dict[str, Any] | None = None
 
 
 class BenchmarkBase(ABC):
@@ -133,6 +135,10 @@ class BenchmarkBase(ABC):
             Dict like ``{"time_seconds": "s", "iops": "ops/s"}``.
         """
         return {}
+
+    def get_workload_config(self) -> dict[str, Any] | None:
+        """Return effective settings captured while running the benchmark."""
+        return None
 
 
 REGISTRY: dict[str, type[BenchmarkBase]] = {}

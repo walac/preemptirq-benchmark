@@ -4,7 +4,11 @@ import shutil
 import subprocess
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
-from preemptirq_benchmark.cpu_isolation import format_cpu_list, get_isolated_cpus
+from preemptirq_benchmark.cpu_isolation import (
+    format_cpu_list,
+    get_isolated_cpus,
+    get_online_cpus,
+)
 
 
 @register
@@ -19,6 +23,7 @@ class RtlaBenchmark(BenchmarkBase):
     def __init__(self) -> None:
         self.duration = "30"
         self.isolated_cpus_only = False
+        self._last_cpus: list[int] | None = None
 
     def configure(self, **kwargs: object) -> None:
         """Accept the duration and isolated_cpus_only CLI parameters.
@@ -32,6 +37,7 @@ class RtlaBenchmark(BenchmarkBase):
             self.duration = str(kwargs["duration"])
         if kwargs.get("isolated_cpus_only") is not None:
             self.isolated_cpus_only = bool(kwargs["isolated_cpus_only"])
+        self._last_cpus = None
 
     def check_prerequisites(self) -> tuple[bool, str]:
         """Check that rtla is installed and isolated CPUs exist if requested.
@@ -53,7 +59,9 @@ class RtlaBenchmark(BenchmarkBase):
         """
         if not self.isolated_cpus_only:
             return []
-        return ["-c", format_cpu_list(get_isolated_cpus())]
+        if self._last_cpus is None:
+            self._last_cpus = get_isolated_cpus()
+        return ["-c", format_cpu_list(self._last_cpus)]
 
     def run_once(self) -> dict[str, float]:
         """Run rtla timerlat and osnoise, parsing summary output.
@@ -99,7 +107,20 @@ class RtlaBenchmark(BenchmarkBase):
         Returns:
             The rtla timerlat command as a list of strings.
         """
+        if not self.isolated_cpus_only and self._last_cpus is None:
+            self._last_cpus = get_online_cpus()
         return ["rtla", "timerlat", "top", "-d", self.duration, "-q", *self._cpu_args()]
+
+    def get_workload_config(self) -> dict[str, object] | None:
+        """Return the duration and CPU population used by rtla."""
+        if self._last_cpus is None:
+            return None
+        return {
+            "duration": self.duration,
+            "isolated_cpus_only": self.isolated_cpus_only,
+            "cpu_selection": "isolated" if self.isolated_cpus_only else "all_online",
+            "cpus": self._last_cpus.copy(),
+        }
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for rtla metrics.

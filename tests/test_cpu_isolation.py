@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from preemptirq_benchmark.cpu_isolation import format_cpu_list, get_isolated_cpus
+from preemptirq_benchmark.cpu_isolation import (
+    format_cpu_list,
+    get_isolated_cpus,
+    get_online_cpus,
+)
 
 
 class TestGetIsolatedCpus:
@@ -51,3 +55,15 @@ class TestFormatCpuList:
     )
     def test_format(self, cpus, expected):
         assert format_cpu_list(cpus) == expected
+
+
+class TestGetOnlineCpus:
+    def test_parses_ranges_and_ids(self, monkeypatch):
+        monkeypatch.setattr(Path, "read_text", lambda self, **kw: "0-2,4\n")
+        assert get_online_cpus() == [0, 1, 2, 4]
+
+    @pytest.mark.parametrize("content", ["", "bad"])
+    def test_rejects_unavailable_cpu_list(self, monkeypatch, content):
+        monkeypatch.setattr(Path, "read_text", lambda self, **kw: content)
+        with pytest.raises(RuntimeError, match="online CPUs"):
+            get_online_cpus()

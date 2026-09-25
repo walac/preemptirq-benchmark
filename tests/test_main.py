@@ -392,6 +392,9 @@ class _FakeBenchmarkFixedIterations(BenchmarkBase):
     def get_units(self) -> dict[str, str]:
         return {"metric": "unit"}
 
+    def get_workload_config(self) -> dict[str, object]:
+        return {"duration": "5m", "cpus": [2, 3]}
+
 
 class TestFixedIterations:
     def test_runs_once_regardless_of_iterations_flag(self, monkeypatch, tmp_path):
@@ -424,6 +427,8 @@ class TestFixedIterations:
         assert bench.run_count == 1
         assert bench.configured_with["duration"] == "5m"
         assert bench.configured_with["isolated_cpus_only"] is True
+        report = load_report(str(tmp_path / "report.json"))
+        assert report["results"][bench.name]["config"] == {"duration": "5m", "cpus": [2, 3]}
 
 
 class _FakeBenchmarkWithPerfStat(BenchmarkBase):

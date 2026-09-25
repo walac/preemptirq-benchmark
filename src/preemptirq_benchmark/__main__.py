@@ -362,6 +362,9 @@ def cmd_run(args: argparse.Namespace) -> None:
 
                 print_progress(bench.name, i + 1, iters, idx, total)
 
+            if result.iterations > 0:
+                result.config = bench.get_workload_config()
+
             if use_perf and bench.supports_perf_stat and result.iterations > 0:
                 cmd = bench.get_command()
                 if cmd:

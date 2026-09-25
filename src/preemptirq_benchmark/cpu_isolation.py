@@ -3,6 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 
 ISOLATED_CPUS_PATH = Path("/sys/devices/system/cpu/isolated")
+ONLINE_CPUS_PATH = Path("/sys/devices/system/cpu/online")
+
+
+def _parse_cpu_list(raw: str) -> list[int]:
+    cpus: list[int] = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            start, end = part.split("-", 1)
+            cpus.extend(range(int(start), int(end) + 1))
+        else:
+            cpus.append(int(part))
+    return sorted(cpus)
 
 
 def get_isolated_cpus() -> list[int]:
@@ -22,20 +37,21 @@ def get_isolated_cpus() -> list[int]:
     if not raw:
         return []
 
-    cpus: list[int] = []
     try:
-        for part in raw.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            if "-" in part:
-                start, end = part.split("-", 1)
-                cpus.extend(range(int(start), int(end) + 1))
-            else:
-                cpus.append(int(part))
+        return _parse_cpu_list(raw)
     except ValueError:
         return []
-    return sorted(cpus)
+
+
+def get_online_cpus() -> list[int]:
+    """Return the CPUs monitored by rtla when no ``-c`` filter is used."""
+    try:
+        cpus = _parse_cpu_list(ONLINE_CPUS_PATH.read_text().strip())
+    except (OSError, ValueError) as e:
+        raise RuntimeError("cannot determine online CPUs for rtla report") from e
+    if not cpus:
+        raise RuntimeError("cannot determine online CPUs for rtla report")
+    return cpus
 
 
 def format_cpu_list(cpus: list[int]) -> str:

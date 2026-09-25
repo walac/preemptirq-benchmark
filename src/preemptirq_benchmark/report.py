@@ -124,7 +124,9 @@ def build_report(
             "perf_counters": {},
         }
 
-        if result.name == "tracerbench" and tracerbench_config:
+        if result.config is not None:
+            entry["config"] = result.config
+        elif result.name == "tracerbench" and tracerbench_config:
             entry["config"] = tracerbench_config
 
         for metric_name, values in result.metrics.items():

@@ -32,6 +32,79 @@ def make_report(
 
 
 class TestBuildComparisonData:
+    def test_warns_about_mismatched_latency_workloads_in_saved_data(self, capsys):
+        base = make_report(name="cyclictest")
+        other = make_report(name="cyclictest")
+        base["results"]["cyclictest"]["config"] = {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 1],
+        }
+        other["results"]["cyclictest"]["config"] = {
+            "duration": "5m",
+            "isolated_cpus_only": True,
+            "cpu_selection": "isolated",
+            "cpus": [2, 3],
+        }
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        assert len(data["warnings"]) == 1
+        assert "cyclictest" in data["warnings"][0]
+        assert "duration" in data["warnings"][0]
+        assert "cpus" in data["warnings"][0]
+
+        display_comparison_data(json.loads(json.dumps(data)), "txt")
+        assert data["warnings"][0] in capsys.readouterr().out
+
+    def test_warns_when_old_latency_report_lacks_config(self):
+        base = make_report(name="rtla")
+        other = make_report(name="rtla")
+        other["results"]["rtla"]["config"] = {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "all_online",
+            "cpus": [0, 1],
+        }
+
+        data = build_comparison_data([base, other], ["base", "other"])
+
+        assert len(data["warnings"]) == 1
+        assert "cannot verify" in data["warnings"][0]
+
+    def test_same_latency_config_has_no_warning(self):
+        base = make_report(name="cyclictest")
+        other = make_report(name="cyclictest")
+        config = {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 1],
+        }
+        base["results"]["cyclictest"]["config"] = config
+        other["results"]["cyclictest"]["config"] = config.copy()
+
+        assert build_comparison_data([base, other], ["base", "other"])["warnings"] == []
+
+    def test_equivalent_duration_and_cpu_order_have_no_warning(self):
+        base = make_report(name="cyclictest")
+        other = make_report(name="cyclictest")
+        base["results"]["cyclictest"]["config"] = {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 1],
+        }
+        other["results"]["cyclictest"]["config"] = {
+            "duration": "30s",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [1, 0],
+        }
+
+        assert build_comparison_data([base, other], ["base", "other"])["warnings"] == []
+
     def test_single_sample_comparison_has_no_test_result(self):
         base = make_report(name="cyclictest", values=[1.0])
         other = make_report(name="cyclictest", values=[100.0])
@@ -269,6 +342,28 @@ class TestIsComparisonData:
 
 
 class TestDisplayComparisonData:
+    def test_direct_comparison_warns_about_latency_workload(self, tmp_path, capsys):
+        base = make_report(name="cyclictest")
+        other = make_report(name="cyclictest")
+        base["results"]["cyclictest"]["config"] = {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 1],
+        }
+        other["results"]["cyclictest"]["config"] = {
+            "duration": "60",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 1],
+        }
+        base_path = save_report(base, str(tmp_path / "base.json"))
+        other_path = save_report(other, str(tmp_path / "other.json"))
+
+        compare_reports([str(base_path), str(other_path)], "txt")
+
+        assert "Warning: cyclictest workload differs" in capsys.readouterr().out
+
     def test_single_sample_comparison_table_says_insufficient_samples(self, tmp_path, capsys):
         base = make_report(name="cyclictest", values=[1.0])
         other = make_report(name="cyclictest", values=[100.0])

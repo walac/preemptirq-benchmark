@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -20,6 +21,53 @@ from preemptirq_benchmark.stats import (
     mann_whitney,
 )
 from preemptirq_benchmark.types import Report
+
+LATENCY_BENCHMARKS = ("cyclictest", "rtla")
+WORKLOAD_KEYS = ("duration", "isolated_cpus_only", "cpu_selection", "cpus")
+
+
+def _comparable_workload_value(key: str, value: Any) -> Any:
+    if key == "duration" and isinstance(value, str):
+        match = re.fullmatch(r"(\d+)([smhd]?)", value)
+        if match:
+            return int(match[1]) * {"": 1, "s": 1, "m": 60, "h": 3600, "d": 86400}[match[2]]
+    if key == "cpus" and isinstance(value, list):
+        return sorted(value)
+    return value
+
+
+def _workload_warnings(reports: list[Report], labels: list[str]) -> list[str]:
+    warnings: list[str] = []
+    base_results = reports[0].get("results", {})
+    for other, label in zip(reports[1:], labels[1:]):
+        other_results = other.get("results", {})
+        for name in LATENCY_BENCHMARKS:
+            if name not in base_results or name not in other_results:
+                continue
+            base_config = base_results[name].get("config")
+            other_config = other_results[name].get("config")
+            if (
+                not base_config
+                or not other_config
+                or any(key not in base_config or key not in other_config for key in WORKLOAD_KEYS)
+            ):
+                warnings.append(
+                    f"Warning: {name} workload cannot verify between {labels[0]} and {label}: "
+                    "configuration missing"
+                )
+                continue
+            changed = [
+                key
+                for key in WORKLOAD_KEYS
+                if _comparable_workload_value(key, base_config[key])
+                != _comparable_workload_value(key, other_config[key])
+            ]
+            if changed:
+                warnings.append(
+                    f"Warning: {name} workload differs between {labels[0]} and {label}: "
+                    f"{', '.join(changed)}"
+                )
+    return warnings
 
 
 def _fmt_metric(mdata: dict[str, Any]) -> str:
@@ -113,7 +161,7 @@ def compare_reports(
         )
         return
 
-    print_comparison_header(reports, labels, fmt)
+    print_comparison_header(reports, labels, fmt, _workload_warnings(reports, labels))
 
     base = reports[0]
     all_benchmarks = set(base.get("benchmarks_run", []))
@@ -186,6 +234,7 @@ def build_comparison_data(
     data: dict[str, Any] = {
         "base": labels[0],
         "compared": labels[1:],
+        "warnings": _workload_warnings(reports, labels),
         "benchmarks": {},
     }
 
@@ -300,6 +349,7 @@ def print_comparison_header(
     reports: list[Report],
     labels: list[str],
     fmt: str,
+    warnings: list[str] | None = None,
 ) -> None:
     """Print metadata header for comparison output.
 
@@ -307,6 +357,7 @@ def print_comparison_header(
         reports: List of loaded report dicts.
         labels: Display names for each report.
         fmt: Output format for style adjustments.
+        warnings: Workload comparability warnings to print.
     """
     base = reports[0]
     lines = [
@@ -315,6 +366,7 @@ def print_comparison_header(
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
         "(insufficient samples) = no test, (unavailable) = test failed",
     ]
+    lines.extend(warnings or [])
     if fmt == "markdown":
         print("## Benchmark Comparison")
         print()
@@ -371,6 +423,7 @@ def display_comparison_data(
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
         "(insufficient samples) = no test, (unavailable) = test failed",
     ]
+    lines.extend(data.get("warnings", []))
     if fmt == "markdown":
         print("## Benchmark Comparison")
         print()

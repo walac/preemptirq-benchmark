@@ -53,6 +53,33 @@ class TestGetCommand:
             "2,3,7",
         ]
 
+    def test_records_isolated_workload_from_command(self, monkeypatch):
+        monkeypatch.setattr(cyclictest_module, "get_isolated_cpus", lambda: [2, 3, 7])
+        bench = CyclictestBenchmark()
+        bench.configure(duration="5m", isolated_cpus_only=True)
+
+        bench.get_command()
+
+        assert bench.get_workload_config() == {
+            "duration": "5m",
+            "isolated_cpus_only": True,
+            "cpu_selection": "isolated",
+            "cpus": [2, 3, 7],
+        }
+
+    def test_records_smp_workload_from_affinity(self, monkeypatch):
+        monkeypatch.setattr(cyclictest_module.os, "sched_getaffinity", lambda pid: {0, 4})
+        bench = CyclictestBenchmark()
+
+        bench.get_command()
+
+        assert bench.get_workload_config() == {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "smp",
+            "cpus": [0, 4],
+        }
+
 
 class TestConfigure:
     def test_defaults(self):

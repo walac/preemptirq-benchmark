@@ -122,6 +122,33 @@ class TestGetCommandWithOptions:
             "2,3,7",
         ]
 
+    def test_records_isolated_workload_from_command(self, monkeypatch):
+        monkeypatch.setattr(rtla_module, "get_isolated_cpus", lambda: [2, 3, 7])
+        bench = RtlaBenchmark()
+        bench.configure(duration="5m", isolated_cpus_only=True)
+
+        bench.get_command()
+
+        assert bench.get_workload_config() == {
+            "duration": "5m",
+            "isolated_cpus_only": True,
+            "cpu_selection": "isolated",
+            "cpus": [2, 3, 7],
+        }
+
+    def test_records_default_online_workload(self, monkeypatch):
+        monkeypatch.setattr(rtla_module, "get_online_cpus", lambda: [0, 2, 4])
+        bench = RtlaBenchmark()
+
+        bench.get_command()
+
+        assert bench.get_workload_config() == {
+            "duration": "30",
+            "isolated_cpus_only": False,
+            "cpu_selection": "all_online",
+            "cpus": [0, 2, 4],
+        }
+
 
 class TestCheckPrerequisites:
     def test_fails_when_isolated_cpus_only_and_none_found(self, monkeypatch):

@@ -32,6 +32,19 @@ def make_result(
 
 
 class TestBuildReport:
+    def test_latency_workload_config_survives_save_and_load(self, tmp_path):
+        result = make_result(name="cyclictest")
+        result.config = {
+            "duration": "5m",
+            "isolated_cpus_only": True,
+            "cpu_selection": "isolated",
+            "cpus": [2, 3],
+        }
+
+        path = save_report(build_report([result]), str(tmp_path / "latency.json"))
+
+        assert load_report(path)["results"]["cyclictest"]["config"] == result.config
+
     def test_basic_structure(self):
         result = make_result()
         report = build_report([result])

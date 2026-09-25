@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -22,6 +23,7 @@ class CyclictestBenchmark(BenchmarkBase):
     def __init__(self) -> None:
         self.duration = "30"
         self.isolated_cpus_only = False
+        self._last_cpus: list[int] | None = None
 
     def configure(self, **kwargs: object) -> None:
         """Accept the duration and isolated_cpus_only CLI parameters.
@@ -35,6 +37,7 @@ class CyclictestBenchmark(BenchmarkBase):
             self.duration = str(kwargs["duration"])
         if kwargs.get("isolated_cpus_only") is not None:
             self.isolated_cpus_only = bool(kwargs["isolated_cpus_only"])
+        self._last_cpus = None
 
     def check_prerequisites(self) -> tuple[bool, str]:
         """Check that cyclictest is installed and isolated CPUs exist if requested.
@@ -56,7 +59,9 @@ class CyclictestBenchmark(BenchmarkBase):
         """
         if not self.isolated_cpus_only:
             return []
-        cpus = get_isolated_cpus()
+        if self._last_cpus is None:
+            self._last_cpus = get_isolated_cpus()
+        cpus = self._last_cpus
         return ["-t", str(len(cpus)), "-a", format_cpu_list(cpus)]
 
     def _base_command(self) -> list[str]:
@@ -71,6 +76,8 @@ class CyclictestBenchmark(BenchmarkBase):
             The cyclictest command as a list of strings, without
             ``--json`` (added by ``run_once`` only).
         """
+        if not self.isolated_cpus_only and self._last_cpus is None:
+            self._last_cpus = sorted(os.sched_getaffinity(0))
         return [
             "cyclictest",
             "-m",
@@ -142,6 +149,17 @@ class CyclictestBenchmark(BenchmarkBase):
             The cyclictest command as a list of strings.
         """
         return self._base_command()
+
+    def get_workload_config(self) -> dict[str, object] | None:
+        """Return the duration and CPU population used by cyclictest."""
+        if self._last_cpus is None:
+            return None
+        return {
+            "duration": self.duration,
+            "isolated_cpus_only": self.isolated_cpus_only,
+            "cpu_selection": "isolated" if self.isolated_cpus_only else "smp",
+            "cpus": self._last_cpus.copy(),
+        }
 
     def get_units(self) -> dict[str, str]:
         """Return unit mapping for cyclictest metrics.
