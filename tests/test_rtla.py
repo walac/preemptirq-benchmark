@@ -30,7 +30,13 @@ class TestTimerlatSummaryParsing:
     def test_rejects_incomplete_userspace_block(self):
         output = "ALL #10 e0 | 1 2 10 | 2 3 20 | 4 5\n"
 
-        with pytest.raises(RuntimeError, match="could not parse timerlat"):
+        with pytest.raises(RuntimeError, match="unexpected rtla timerlat ALL-row layout"):
+            parse_timerlat_max_from_output(output)
+
+    def test_rejects_all_row_with_unexpected_block_width(self):
+        output = "ALL #10 e0 | 0 1 2 10 | 0 2 3 20 | 0 4 5 100\n"
+
+        with pytest.raises(RuntimeError, match="unexpected rtla timerlat ALL-row layout"):
             parse_timerlat_max_from_output(output)
 
 

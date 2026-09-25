@@ -9,6 +9,8 @@ from preemptirq_benchmark.cpu_isolation import (
     get_online_cpus,
 )
 
+_EXPECTED_TIMERLAT_ALL_BLOCK_WIDTH = 3
+
 
 @register
 class RtlaBenchmark(BenchmarkBase):
@@ -150,9 +152,17 @@ def parse_timerlat_max_from_output(output: str) -> float:
             blocks = [part.split() for part in line.split("|")[1:] if part.strip()]
             if len(blocks) < 2:
                 break
+            widths = {len(block) for block in blocks}
+            if widths != {_EXPECTED_TIMERLAT_ALL_BLOCK_WIDTH}:
+                raise RuntimeError(
+                    "unexpected rtla timerlat ALL-row layout "
+                    f"(block widths {sorted(widths)}, expected "
+                    f"{_EXPECTED_TIMERLAT_ALL_BLOCK_WIDTH}); refusing to guess which "
+                    f"column is max. line={line!r}"
+                )
             try:
-                maxima = [float(stats[2]) for stats in blocks if stats[2] != "-"]
-            except (IndexError, ValueError) as e:
+                maxima = [float(block[-1]) for block in blocks if block[-1] != "-"]
+            except ValueError as e:
                 raise RuntimeError("could not parse timerlat max latency from output") from e
             if maxima:
                 return max(maxima)
