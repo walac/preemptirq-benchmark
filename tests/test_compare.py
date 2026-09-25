@@ -32,6 +32,18 @@ def make_report(
 
 
 class TestBuildComparisonData:
+    def test_single_sample_comparison_has_no_test_result(self):
+        base = make_report(name="cyclictest", values=[1.0])
+        other = make_report(name="cyclictest", values=[100.0])
+
+        data = build_comparison_data([base, other], ["base", "other"])
+        comparison = data["benchmarks"]["cyclictest"]["time_seconds"]["comparisons"]["other"]
+
+        assert comparison["delta_pct"] == 9900.0
+        assert comparison["p_value"] is None
+        assert comparison["test_status"] == "insufficient_samples"
+        assert comparison["significant"] == "(insufficient samples)"
+
     def test_basic_comparison(self):
         base = make_report(values=[1.0, 1.1, 1.2])
         patched = make_report(values=[1.3, 1.4, 1.5])
@@ -257,6 +269,22 @@ class TestIsComparisonData:
 
 
 class TestDisplayComparisonData:
+    def test_single_sample_comparison_table_says_insufficient_samples(self, tmp_path, capsys):
+        base = make_report(name="cyclictest", values=[1.0])
+        other = make_report(name="cyclictest", values=[100.0])
+        base_path = save_report(base, str(tmp_path / "base.json"))
+        other_path = save_report(other, str(tmp_path / "other.json"))
+
+        compare_reports([str(base_path), str(other_path)], "txt")
+        direct_output = capsys.readouterr().out
+        assert "+9900.0% (insufficient samples)" in direct_output
+        assert "+9900.0% (ns)" not in direct_output
+
+        data = build_comparison_data([base, other], ["base", "other"])
+        display_comparison_data(json.loads(json.dumps(data)), "txt")
+        saved_output = capsys.readouterr().out
+        assert "+9900.0% (insufficient samples)" in saved_output
+
     def test_ascii_output(self, capsys):
         base = make_report(values=[1.0, 1.1, 1.2])
         patched = make_report(values=[1.3, 1.4, 1.5])

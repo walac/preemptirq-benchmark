@@ -240,8 +240,9 @@ def build_comparison_data(
                 metric_cmp["comparisons"][labels[i + 1]] = {
                     "delta_pct": round(pct, 2),
                     "other_mean": other_mdata["mean"],
-                    "p_value": round(sig.p_value, 4),
+                    "p_value": round(sig.p_value, 4) if sig.p_value is not None else None,
                     "significant": sig.label,
+                    "test_status": sig.status,
                 }
 
             bench_data[metric_name] = metric_cmp
@@ -312,6 +313,7 @@ def print_comparison_header(
         f"Base: {labels[0]} (kernel {base['kernel_version']})",
         f"Compared: {', '.join(labels[1:])}",
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
+        "(insufficient samples) = no test, (unavailable) = test failed",
     ]
     if fmt == "markdown":
         print("## Benchmark Comparison")
@@ -367,6 +369,7 @@ def display_comparison_data(
         f"Base: {base_label}",
         f"Compared: {', '.join(compared_labels)}",
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
+        "(insufficient samples) = no test, (unavailable) = test failed",
     ]
     if fmt == "markdown":
         print("## Benchmark Comparison")

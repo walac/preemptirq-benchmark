@@ -158,22 +158,27 @@ class TestMannWhitney:
     def test_insufficient_base_samples(self):
         result = mann_whitney([1.0, 2.0], [1.0, 2.0, 3.0])
 
-        assert not result.significant_05
-        assert not result.significant_01
-        assert result.label == "(ns)"
-        assert result.p_value == 1.0
+        assert result.significant_05 is None
+        assert result.significant_01 is None
+        assert result.label == "(insufficient samples)"
+        assert result.status == "insufficient_samples"
+        assert result.p_value is None
+        assert result.u_statistic is None
 
     def test_insufficient_other_samples(self):
         result = mann_whitney([1.0, 2.0, 3.0], [1.0])
 
-        assert result.label == "(ns)"
-        assert result.p_value == 1.0
+        assert result.label == "(insufficient samples)"
+        assert result.status == "insufficient_samples"
+        assert result.p_value is None
 
     def test_identical_samples(self):
         result = mann_whitney([5.0, 5.0, 5.0], [5.0, 5.0, 5.0])
 
         assert not result.significant_05
         assert result.label == "(ns)"
+        assert result.status == "tested"
+        assert result.p_value is not None
 
     def test_returns_significance_result(self):
         result = mann_whitney([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
@@ -225,5 +230,13 @@ class TestMannWhitney:
             side_effect=ValueError("all values identical"),
         ):
             res = mann_whitney([1, 2, 3], [4, 5, 6])
-            assert res.label == "(ns)"
-            assert res.p_value == 1.0
+            assert res.label == "(unavailable)"
+            assert res.status == "unavailable"
+            assert res.p_value is None
+
+    def test_nonfinite_test_result_is_unavailable(self):
+        result = mann_whitney([1.0, 2.0, float("nan")], [4.0, 5.0, 6.0])
+
+        assert result.status == "unavailable"
+        assert result.p_value is None
+        assert result.u_statistic is None

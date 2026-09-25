@@ -117,11 +117,12 @@ def auto_style_cell(cell: str) -> Text:
     Returns:
         A rich Text object with the appropriate style applied:
         red for regression (+N.N%), green for improvement (-N.N%),
-        dim for not significant (ns), yellow for p < 0.05 (*),
+        dim for not significant (ns) or unavailable tests,
+        yellow for p < 0.05 (*),
         bold yellow for p < 0.01 (**).
     """
     stripped = cell.strip()
-    if stripped.endswith("(ns)"):
+    if stripped.endswith(("(ns)", "(insufficient samples)", "(unavailable)")):
         return Text(cell, style="dim")
     if stripped.endswith("(**)"):
         return Text(cell, style="bold yellow")

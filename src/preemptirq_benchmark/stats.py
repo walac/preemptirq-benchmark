@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Literal
 
 from scipy.stats import mannwhitneyu, t
 
@@ -34,19 +35,22 @@ class SignificanceResult:
     """Result of a Mann-Whitney U significance test.
 
     Attributes:
-        u_statistic: The U statistic from the test.
-        p_value: Two-sided p-value.
-        significant_05: True if p < 0.05.
-        significant_01: True if p < 0.01.
+        u_statistic: The U statistic, or None when no test ran.
+        p_value: Two-sided p-value, or None when no test ran.
+        significant_05: True if p < 0.05, or None when no test ran.
+        significant_01: True if p < 0.01, or None when no test ran.
         label: Human-readable label — "(**)" for p < 0.01,
-            "(*)" for p < 0.05, "(ns)" for not significant.
+            "(*)" for p < 0.05, "(ns)" for not significant,
+            or an explicit unavailable reason.
+        status: Whether the test ran, lacked samples, or failed.
     """
 
-    u_statistic: float
-    p_value: float
-    significant_05: bool
-    significant_01: bool
+    u_statistic: float | None
+    p_value: float | None
+    significant_05: bool | None
+    significant_01: bool | None
     label: str
+    status: Literal["tested", "insufficient_samples", "unavailable"]
 
 
 def compute_stats(values: list[float], ci_pct: float = 95.0) -> DescriptiveStats:
@@ -156,6 +160,17 @@ def format_delta_pct(pct: float) -> str:
     return "0.0%"
 
 
+def _unavailable_significance() -> SignificanceResult:
+    return SignificanceResult(
+        u_statistic=None,
+        p_value=None,
+        significant_05=None,
+        significant_01=None,
+        label="(unavailable)",
+        status="unavailable",
+    )
+
+
 def mann_whitney(base: list[float], other: list[float]) -> SignificanceResult:
     """Run a two-sided Mann-Whitney U test between two sample sets.
 
@@ -166,28 +181,26 @@ def mann_whitney(base: list[float], other: list[float]) -> SignificanceResult:
     Returns:
         A SignificanceResult with the U statistic, p-value, boolean
         significance flags at 0.05 and 0.01 levels, and a human-readable
-        label.  Returns a not-significant result if either sample has
-        fewer than 3 observations.
+        label.  Returns an insufficient-samples result if either sample
+        has fewer than 3 observations.
     """
     if len(base) < 3 or len(other) < 3:
         return SignificanceResult(
-            u_statistic=0.0,
-            p_value=1.0,
-            significant_05=False,
-            significant_01=False,
-            label="(ns)",
+            u_statistic=None,
+            p_value=None,
+            significant_05=None,
+            significant_01=None,
+            label="(insufficient samples)",
+            status="insufficient_samples",
         )
 
     try:
         stat, p = mannwhitneyu(base, other, alternative="two-sided")
     except ValueError:
-        return SignificanceResult(
-            u_statistic=0.0,
-            p_value=1.0,
-            significant_05=False,
-            significant_01=False,
-            label="(ns)",
-        )
+        return _unavailable_significance()
+
+    if not math.isfinite(float(stat)) or not math.isfinite(float(p)):
+        return _unavailable_significance()
 
     if p < 0.01:
         label = "(**)"
@@ -202,4 +215,5 @@ def mann_whitney(base: list[float], other: list[float]) -> SignificanceResult:
         significant_05=p < 0.05,
         significant_01=p < 0.01,
         label=label,
+        status="tested",
     )

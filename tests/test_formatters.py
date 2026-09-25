@@ -52,6 +52,11 @@ class TestFormatTable:
 
 
 class TestAutoStyleCell:
+    @pytest.mark.parametrize("label", ["insufficient samples", "unavailable"])
+    def test_untested_significance_suffix_is_dim(self, label):
+        text = auto_style_cell(f"+9900.0% ({label})")
+        assert text.style == "dim"
+
     def test_highly_significant_suffix(self):
         text = auto_style_cell("+5.2% (**)")
         assert text.style == "bold yellow"
