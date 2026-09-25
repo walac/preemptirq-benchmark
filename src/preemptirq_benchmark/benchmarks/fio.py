@@ -31,7 +31,7 @@ class FioBenchmark(BenchmarkBase):
             return True, ""
 
         result = subprocess.run(
-            ["modprobe", "null_blk", "irqmode=1"],
+            ["modprobe", "null_blk", "irqmode=1", "gb=4"],
             capture_output=True,
             text=True,
         )
@@ -42,7 +42,7 @@ class FioBenchmark(BenchmarkBase):
         return False, (
             "/dev/nullb0 not available: "
             f"({result.stderr.strip()}). "
-            "Load manually: modprobe null_blk irqmode=1"
+            "Load manually: modprobe null_blk irqmode=1 gb=4"
         )
 
     def run_once(self) -> dict[str, float]:
@@ -95,7 +95,6 @@ class FioBenchmark(BenchmarkBase):
             "--rw=randread",
             "--runtime=30",
             "--time_based",
-            "--size=16384",
             "--output-format=json",
         ]
 
