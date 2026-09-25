@@ -57,6 +57,13 @@ class TestAutoStyleCell:
         text = auto_style_cell(f"+9900.0% ({label})")
         assert text.style == "dim"
 
+    def test_insufficient_samples_with_counts_is_dim(self):
+        # [BUG-ST-01] mann_whitney() now reports the actual n1/n2 in the
+        # insufficient-samples label (e.g. "(insufficient samples: n=3v3)")
+        # instead of the fixed "(insufficient samples)" string.
+        text = auto_style_cell("+9900.0% (insufficient samples: n=3v3)")
+        assert text.style == "dim"
+
     def test_highly_significant_suffix(self):
         text = auto_style_cell("+5.2% (**)")
         assert text.style == "bold yellow"

@@ -160,6 +160,14 @@ def format_delta_pct(pct: float) -> str:
     return "0.0%"
 
 
+# [BUG-ST-01] Smallest C(n1+n2, n1) at which a two-sided exact Mann-Whitney
+# U test can attain p < 0.05 (min p = 2 / C(n1+n2, n1)). Below this, every
+# possible outcome yields p >= 0.05, so "(ns)" would misreport a test that
+# was mathematically incapable of ever finding significance as one that
+# ran and found no effect.
+_MIN_COMB_FOR_TESTABLE = 40
+
+
 def _unavailable_significance() -> SignificanceResult:
     return SignificanceResult(
         u_statistic=None,
@@ -181,16 +189,18 @@ def mann_whitney(base: list[float], other: list[float]) -> SignificanceResult:
     Returns:
         A SignificanceResult with the U statistic, p-value, boolean
         significance flags at 0.05 and 0.01 levels, and a human-readable
-        label.  Returns an insufficient-samples result if either sample
-        has fewer than 3 observations.
+        label.  Returns an insufficient-samples result if the combined
+        sample sizes are too small for a two-sided exact test to ever
+        attain p < 0.05, regardless of how well-separated the samples are.
     """
-    if len(base) < 3 or len(other) < 3:
+    n1, n2 = len(base), len(other)
+    if math.comb(n1 + n2, n1) <= _MIN_COMB_FOR_TESTABLE:
         return SignificanceResult(
             u_statistic=None,
             p_value=None,
             significant_05=None,
             significant_01=None,
-            label="(insufficient samples)",
+            label=f"(insufficient samples: n={n1}v{n2})",
             status="insufficient_samples",
         )
 

@@ -399,7 +399,7 @@ def print_comparison_header(
         f"Base: {labels[0]} (kernel {base['kernel_version']})",
         f"Compared: {', '.join(labels[1:])}",
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
-        "(insufficient samples) = no test, (unavailable) = test failed",
+        "(insufficient samples: n=AvB) = no test, (unavailable) = test failed",
     ]
     lines.extend(warnings or [])
     if fmt == "markdown":
@@ -456,7 +456,7 @@ def display_comparison_data(
         f"Base: {base_label}",
         f"Compared: {', '.join(compared_labels)}",
         "(ns) = not significant, (*) = p<0.05, (**) = p<0.01",
-        "(insufficient samples) = no test, (unavailable) = test failed",
+        "(insufficient samples: n=AvB) = no test, (unavailable) = test failed",
     ]
     lines.extend(data.get("warnings", []))
     if fmt == "markdown":

@@ -160,7 +160,7 @@ class TestMannWhitney:
 
         assert result.significant_05 is None
         assert result.significant_01 is None
-        assert result.label == "(insufficient samples)"
+        assert result.label == "(insufficient samples: n=2v3)"
         assert result.status == "insufficient_samples"
         assert result.p_value is None
         assert result.u_statistic is None
@@ -168,12 +168,32 @@ class TestMannWhitney:
     def test_insufficient_other_samples(self):
         result = mann_whitney([1.0, 2.0, 3.0], [1.0])
 
-        assert result.label == "(insufficient samples)"
+        assert result.label == "(insufficient samples: n=3v1)"
         assert result.status == "insufficient_samples"
         assert result.p_value is None
 
+    def test_three_vs_three_is_insufficient(self):
+        # [BUG-ST-01] C(6, 3) = 20 <= 40: even perfectly separated 3-vs-3
+        # samples cannot reach p < 0.05 (min attainable p = 0.1), so this
+        # must never be reported as a completed "(ns)" test.
+        result = mann_whitney([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+
+        assert result.label == "(insufficient samples: n=3v3)"
+        assert result.status == "insufficient_samples"
+        assert result.p_value is None
+
+    def test_four_vs_four_is_testable(self):
+        # [BUG-ST-01] C(8, 4) = 70 > 40: 4-vs-4 is the smallest equal-sized
+        # groups where p < 0.05 is attainable, so a real test must run.
+        result = mann_whitney([5.0, 5.0, 5.0, 5.0], [5.0, 5.0, 5.0, 5.0])
+
+        assert not result.significant_05
+        assert result.label == "(ns)"
+        assert result.status == "tested"
+        assert result.p_value is not None
+
     def test_identical_samples(self):
-        result = mann_whitney([5.0, 5.0, 5.0], [5.0, 5.0, 5.0])
+        result = mann_whitney([5.0, 5.0, 5.0, 5.0], [5.0, 5.0, 5.0, 5.0])
 
         assert not result.significant_05
         assert result.label == "(ns)"
@@ -181,7 +201,7 @@ class TestMannWhitney:
         assert result.p_value is not None
 
     def test_returns_significance_result(self):
-        result = mann_whitney([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+        result = mann_whitney([1.0, 2.0, 3.0, 4.0], [5.0, 6.0, 7.0, 8.0])
         assert isinstance(result, SignificanceResult)
 
     def test_clearly_different_distributions(self):
@@ -195,19 +215,19 @@ class TestMannWhitney:
     def test_label_boundaries_via_mock(self):
         with patch("preemptirq_benchmark.stats.mannwhitneyu") as mock_mwu:
             mock_mwu.return_value = (10.0, 0.005)
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(**)"
             assert res.significant_01
             assert res.significant_05
 
             mock_mwu.return_value = (10.0, 0.03)
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(*)"
             assert not res.significant_01
             assert res.significant_05
 
             mock_mwu.return_value = (10.0, 0.06)
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(ns)"
             assert not res.significant_01
             assert not res.significant_05
@@ -215,13 +235,13 @@ class TestMannWhitney:
     def test_exact_boundary_p_001(self):
         with patch("preemptirq_benchmark.stats.mannwhitneyu") as mock_mwu:
             mock_mwu.return_value = (10.0, 0.01)
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(*)"
 
     def test_exact_boundary_p_005(self):
         with patch("preemptirq_benchmark.stats.mannwhitneyu") as mock_mwu:
             mock_mwu.return_value = (10.0, 0.05)
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(ns)"
 
     def test_value_error_fallback(self):
@@ -229,13 +249,13 @@ class TestMannWhitney:
             "preemptirq_benchmark.stats.mannwhitneyu",
             side_effect=ValueError("all values identical"),
         ):
-            res = mann_whitney([1, 2, 3], [4, 5, 6])
+            res = mann_whitney([1, 2, 3, 4], [5, 6, 7, 8])
             assert res.label == "(unavailable)"
             assert res.status == "unavailable"
             assert res.p_value is None
 
     def test_nonfinite_test_result_is_unavailable(self):
-        result = mann_whitney([1.0, 2.0, float("nan")], [4.0, 5.0, 6.0])
+        result = mann_whitney([1.0, 2.0, 3.0, float("nan")], [4.0, 5.0, 6.0, 7.0])
 
         assert result.status == "unavailable"
         assert result.p_value is None

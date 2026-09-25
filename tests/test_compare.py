@@ -121,7 +121,7 @@ class TestBuildComparisonData:
         assert comparison["delta_pct"] == 9900.0
         assert comparison["p_value"] is None
         assert comparison["test_status"] == "insufficient_samples"
-        assert comparison["significant"] == "(insufficient samples)"
+        assert comparison["significant"] == "(insufficient samples: n=1v1)"
 
     def test_basic_comparison(self):
         base = make_report(values=[1.0, 1.1, 1.2])
@@ -142,7 +142,7 @@ class TestBuildComparisonData:
         cmp = ts["comparisons"]["patched"]
         assert cmp["delta_pct"] > 0
         assert "p_value" in cmp
-        assert cmp["significant"] in ["(**)", "(*)", "(ns)"]
+        assert cmp["significant"] == "(insufficient samples: n=3v3)"
 
     def test_three_way_comparison(self):
         base = make_report(values=[1.0, 1.1, 1.2])
@@ -378,13 +378,18 @@ class TestDisplayComparisonData:
 
         compare_reports([str(base_path), str(other_path)], "txt")
         direct_output = capsys.readouterr().out
-        assert "+9900.0% (insufficient samples)" in direct_output
+        assert "+9900.0% (insufficient samples: n=1v1)" in direct_output
         assert "+9900.0% (ns)" not in direct_output
+        # [BUG-ST-01] The legend must describe the dynamic "n=AvB" label
+        # actually printed above, not the old fixed "(insufficient
+        # samples)" string.
+        assert "(insufficient samples: n=AvB) = no test" in direct_output
 
         data = build_comparison_data([base, other], ["base", "other"])
         display_comparison_data(json.loads(json.dumps(data)), "txt")
         saved_output = capsys.readouterr().out
-        assert "+9900.0% (insufficient samples)" in saved_output
+        assert "+9900.0% (insufficient samples: n=1v1)" in saved_output
+        assert "(insufficient samples: n=AvB) = no test" in saved_output
 
     def test_ascii_output(self, capsys):
         base = make_report(values=[1.0, 1.1, 1.2])

@@ -126,7 +126,7 @@ def auto_style_cell(cell: str) -> Text:
         sign-based coloring would be wrong for throughput-style metrics.
     """
     stripped = cell.strip()
-    if stripped.endswith(("(ns)", "(insufficient samples)", "(unavailable)")):
+    if stripped.endswith(("(ns)", "(unavailable)")) or "(insufficient samples" in stripped:
         return Text(cell, style="dim")
     if stripped.endswith("(**)"):
         return Text(cell, style="bold yellow")
