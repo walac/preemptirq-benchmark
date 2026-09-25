@@ -733,6 +733,29 @@ class TestCompareReports:
         assert "benchmarks" in data
         assert "hackbench" in data["benchmarks"]
 
+    def test_json_output_sanitizes_infinite_delta(self, tmp_path, capsys):
+        base = make_report(values=[0.0])
+        patched = make_report(values=[1.0])
+
+        p1 = save_report(base, str(tmp_path / "base.json"))
+        p2 = save_report(patched, str(tmp_path / "patched.json"))
+
+        compare_reports([str(p1), str(p2)], "json")
+
+        data = json.loads(capsys.readouterr().out)
+        comparison = data["benchmarks"]["hackbench"]["time_seconds"]["comparisons"]["patched"]
+        assert comparison["delta_pct"] == "+inf"
+
+    def test_comparison_data_sanitizes_nan_delta(self):
+        base = make_report(values=[1.0])
+        patched = make_report(values=[1.0])
+        patched["results"]["hackbench"]["metrics"]["time_seconds"]["mean"] = float("nan")
+
+        data = build_comparison_data([base, patched], ["base", "patched"])
+
+        comparison = data["benchmarks"]["hackbench"]["time_seconds"]["comparisons"]["patched"]
+        assert comparison["delta_pct"] is None
+
     def test_perf_counter_comparison(self, tmp_path, capsys):
         base = make_report(perf_counters={"cycles": [1000000]})
         patched = make_report(perf_counters={"cycles": [1100000]})

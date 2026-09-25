@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping
@@ -108,6 +109,15 @@ def _fmt_metric(mdata: dict[str, Any]) -> str:
     return f"{mdata['mean']:.2f}{suffix}"
 
 
+def _json_safe(value: float) -> float | str | None:
+    """Convert a comparison value to a valid JSON representation."""
+    if math.isnan(value):
+        return None
+    if math.isinf(value):
+        return "+inf" if value > 0 else "-inf"
+    return round(value, 2)
+
+
 def _build_comparison_rows(
     base: Report,
     others: list[Report],
@@ -189,6 +199,7 @@ def compare_reports(
             json.dumps(
                 build_comparison_data(reports, labels, tracerbench_exclude_stats),
                 indent=2,
+                allow_nan=False,
             )
         )
         return
@@ -322,7 +333,7 @@ def build_comparison_data(
                 other_values = other_mdata.get("values", [])
                 sig = mann_whitney(base_values, other_values)
                 metric_cmp["comparisons"][labels[i + 1]] = {
-                    "delta_pct": round(pct, 2),
+                    "delta_pct": _json_safe(pct),
                     "other_mean": other_mdata["mean"],
                     "p_value": round(sig.p_value, 4) if sig.p_value is not None else None,
                     "significant": sig.label,
@@ -370,7 +381,7 @@ def build_comparison_data(
                 pct = compute_delta_pct(base_cdata["mean"], other_cdata["mean"])
                 sig = mann_whitney(base_cdata["values"], other_cdata["values"])
                 counter_cmp["comparisons"][labels[i + 1]] = {
-                    "delta_pct": round(pct, 2),
+                    "delta_pct": _json_safe(pct),
                     "other_mean": other_cdata["mean"],
                     "p_value": round(sig.p_value, 4) if sig.p_value is not None else None,
                     "significant": sig.label,
@@ -450,7 +461,7 @@ def display_comparison_data(
             from tracerbench metrics (e.g., ["median", "max"]).
     """
     if fmt == "json":
-        print(json.dumps(data, indent=2))
+        print(json.dumps(data, indent=2, allow_nan=False))
         return
 
     base_label = data.get("base", "base")
