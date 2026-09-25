@@ -31,13 +31,27 @@ class TestGetCommand:
 
         assert bench.get_command()[7:9] == ["-D", "30m"]
 
-    def test_isolated_cpus_only_appends_affinity_flag(self, monkeypatch):
+    def test_isolated_cpus_only_runs_one_pinned_thread_per_cpu(self, monkeypatch):
         monkeypatch.setattr(cyclictest_module, "get_isolated_cpus", lambda: [2, 3, 7])
 
         bench = CyclictestBenchmark()
         bench.configure(duration=None, isolated_cpus_only=True)
 
-        assert bench.get_command() == DEFAULT_COMMAND + ["-a", "2,3,7"]
+        assert bench.get_command() == [
+            "cyclictest",
+            "-m",
+            "-p",
+            "98",
+            "-i",
+            "1000",
+            "-D",
+            "30",
+            "-q",
+            "-t",
+            "3",
+            "-a",
+            "2,3,7",
+        ]
 
 
 class TestConfigure:
@@ -124,6 +138,8 @@ class TestRunOnce:
         assert calls[0][base_len] == f"--json={json_path_holder['path']}"
         assert "-D" in calls[0] and "1m" in calls[0]
         assert "-a" in calls[0] and "4,5" in calls[0]
+        assert "-S" not in calls[0]
+        assert calls[0][calls[0].index("-t") + 1] == "2"
 
         assert metrics["min_latency_us"] == 0.5
         assert metrics["avg_latency_us"] == 2.5

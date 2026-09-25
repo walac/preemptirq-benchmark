@@ -49,14 +49,15 @@ class CyclictestBenchmark(BenchmarkBase):
         return True, ""
 
     def _cpu_args(self) -> list[str]:
-        """Return the ``-a`` argument restricting cyclictest to isolated CPUs.
+        """Return the thread count and affinity for isolated CPUs.
 
         Returns:
-            ``["-a", cpu-list]`` if isolated_cpus_only is set, else [].
+            One thread per isolated CPU, pinned in CPU-list order, or [].
         """
         if not self.isolated_cpus_only:
             return []
-        return ["-a", format_cpu_list(get_isolated_cpus())]
+        cpus = get_isolated_cpus()
+        return ["-t", str(len(cpus)), "-a", format_cpu_list(cpus)]
 
     def _base_command(self) -> list[str]:
         """Return the cyclictest command shared by run_once() and get_command().
@@ -73,7 +74,7 @@ class CyclictestBenchmark(BenchmarkBase):
         return [
             "cyclictest",
             "-m",
-            "-S",
+            *([] if self.isolated_cpus_only else ["-S"]),
             "-p",
             "98",
             "-i",
