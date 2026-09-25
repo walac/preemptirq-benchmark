@@ -442,7 +442,16 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
             result["throughput_ops_per_sec"] = value * multiplier
         m = re.search(r"latency\s+([\d.]+)\s*([a-z]+)/op", proc.stdout)
         if m:
-            result["latency_per_op"] = float(m.group(1))
+            latency_unit = m.group(2)
+            # Convert to nanoseconds to match get_units()
+            try:
+                scale = {"ns": 1.0, "us": 1e3, "ms": 1e6}[latency_unit]
+            except KeyError as e:
+                raise RuntimeError(
+                    f"unexpected latency unit {latency_unit!r} in bench output, "
+                    f"expected ns, us, or ms. output={proc.stdout[-500:]!r}"
+                ) from e
+            result["latency_per_op"] = float(m.group(1)) * scale
         expected = {"throughput_ops_per_sec", "latency_per_op"}
         missing = expected - result.keys()
         if missing:

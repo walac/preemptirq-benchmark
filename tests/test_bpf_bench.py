@@ -120,6 +120,51 @@ class TestLpmTrieLookupParsing:
         assert metrics["throughput_ops_per_sec"] == pytest.approx(2500.0)
         assert metrics["latency_per_op"] == pytest.approx(0.40)
 
+    def test_parses_latency_with_us_unit(self, monkeypatch):
+        # [BUG-BM-02] Regression test: the regex captured the latency
+        # unit (ns/us/ms) but the code ignored it, storing only the raw
+        # numeric value while get_units() unconditionally labelled it
+        # "ns/op" -- a 1000x error whenever bench reported us/op.
+        stdout = "Summary: throughput 12.82 ± 0.05 M ops/s, " "latency 1.234 us/op\n"
+
+        def fake_run(cmd, **kwargs):
+            return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        bench = BpfLpmTrieLookupBenchmark()
+        metrics = bench.run_once()
+
+        # 1.234 us/op = 1234.0 ns/op
+        assert metrics["latency_per_op"] == pytest.approx(1234.0)
+
+    def test_parses_latency_with_ms_unit(self, monkeypatch):
+        stdout = "Summary: throughput 12.82 ± 0.05 M ops/s, " "latency 0.002 ms/op\n"
+
+        def fake_run(cmd, **kwargs):
+            return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        bench = BpfLpmTrieLookupBenchmark()
+        metrics = bench.run_once()
+
+        # 0.002 ms/op = 2000.0 ns/op
+        assert metrics["latency_per_op"] == pytest.approx(2000.0)
+
+    def test_raises_on_unknown_latency_unit(self, monkeypatch):
+        stdout = "Summary: throughput 12.82 ± 0.05 M ops/s, " "latency 78.05 sec/op\n"
+
+        def fake_run(cmd, **kwargs):
+            return SimpleNamespace(stdout=stdout, stderr="", returncode=0)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        bench = BpfLpmTrieLookupBenchmark()
+
+        with pytest.raises(RuntimeError, match="unexpected latency unit 'sec' in bench output"):
+            bench.run_once()
+
     def test_raises_on_missing_throughput(self, monkeypatch):
         # Partial parse failure — latency present but throughput missing
         stdout = "Summary: latency 78.05 ns/op\n"
