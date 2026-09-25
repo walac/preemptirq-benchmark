@@ -9,7 +9,7 @@ import tempfile
 import time
 from typing import IO
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BENCH_ENV, BenchmarkBase, register, run_command
 
 
 @register
@@ -60,6 +60,7 @@ class Iperf3Benchmark(BenchmarkBase):
             stdout=subprocess.DEVNULL,
             stderr=self._server_stderr,
             text=True,
+            env=BENCH_ENV,
         )
         proc = self.server_proc
         deadline = time.monotonic() + self._SERVER_STARTUP_TIMEOUT_S
@@ -104,7 +105,7 @@ class Iperf3Benchmark(BenchmarkBase):
         """
         metrics: dict[str, float] = {}
 
-        tcp = subprocess.run(
+        tcp = run_command(
             ["iperf3", "-c", "127.0.0.1", "--bidir", "-t", "10", "-J"],
             capture_output=True,
             text=True,
@@ -123,7 +124,7 @@ class Iperf3Benchmark(BenchmarkBase):
         except KeyError as e:
             raise RuntimeError(f"cannot find expected keys in iperf3 TCP JSON: {e}") from e
 
-        udp = subprocess.run(
+        udp = run_command(
             ["iperf3", "-c", "127.0.0.1", "--bidir", "-t", "10", "-u", "-b", "100G", "-J"],
             capture_output=True,
             text=True,

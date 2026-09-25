@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import subprocess
+
 import pytest
 
+import preemptirq_benchmark.benchmarks as benchmarks_module
 from preemptirq_benchmark.benchmarks import (
     ALL_BENCHMARK_NAMES,
+    BENCH_ENV,
     BENCHMARK_DESCRIPTIONS,
     REGISTRY,
     BenchmarkBase,
@@ -13,9 +17,43 @@ from preemptirq_benchmark.benchmarks import (
     import_all,
     register,
     resolve_benchmarks,
+    run_command,
 )
+from preemptirq_benchmark.perf_stat import run_with_perf_stat
 
 import_all()
+
+
+class TestBenchmarkCommandLocale:
+    def test_run_command_forces_c_locale(self, monkeypatch):
+        captured: dict[str, object] = {}
+
+        def fake_run(command, **kwargs):
+            captured["command"] = command
+            captured["env"] = kwargs["env"]
+            return subprocess.CompletedProcess(command, 0)
+
+        monkeypatch.setattr(benchmarks_module.subprocess, "run", fake_run)
+
+        run_command(["benchmark"], capture_output=True, text=True)
+
+        assert captured["command"] == ["benchmark"]
+        assert captured["env"] is BENCH_ENV
+        assert BENCH_ENV["LC_ALL"] == "C"
+        assert BENCH_ENV["LANG"] == "C"
+
+    def test_perf_stat_forces_c_locale(self, monkeypatch):
+        captured: dict[str, object] = {}
+
+        def fake_run(command, **kwargs):
+            captured["env"] = kwargs["env"]
+            return subprocess.CompletedProcess(command, 0, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        run_with_perf_stat(["benchmark"], events=["cycles"])
+
+        assert captured["env"] is BENCH_ENV
 
 
 class TestResolveBenchmarks:

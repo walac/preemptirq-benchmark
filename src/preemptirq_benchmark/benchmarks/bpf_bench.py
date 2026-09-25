@@ -3,9 +3,8 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 from preemptirq_benchmark.cpu_isolation import format_cpu_list
 
 
@@ -91,7 +90,7 @@ class BpfBenchBase(BenchmarkBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -161,7 +160,7 @@ class BpfLocalStorageBenchmark(BpfBenchBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -217,7 +216,7 @@ class BpfHashmapBenchmark(BpfHashmapBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -287,7 +286,7 @@ class BpfHashmapLookupBenchmark(BpfHashmapBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -332,7 +331,7 @@ class BpfLocalStorageCreateBenchmark(BpfBenchBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -372,7 +371,7 @@ class BpfHtabMemBenchmark(BpfBenchBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,
@@ -417,7 +416,7 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.bench_cmd(),
             capture_output=True,
             text=True,

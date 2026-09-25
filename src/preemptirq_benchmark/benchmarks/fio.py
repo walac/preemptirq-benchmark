@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 from pathlib import Path
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 
 NULLB_DEV = Path("/dev/nullb0")
 IRQMODE_PARAM = Path("/sys/module/null_blk/parameters/irqmode")
@@ -29,7 +28,7 @@ class FioBenchmark(BenchmarkBase):
             return False, "fio not found (install: dnf install fio)"
 
         if not NULLB_DEV.exists():
-            result = subprocess.run(
+            result = run_command(
                 ["modprobe", "null_blk", "irqmode=1", "gb=4"],
                 capture_output=True,
                 text=True,
@@ -66,7 +65,7 @@ class FioBenchmark(BenchmarkBase):
         Raises:
             RuntimeError: If fio JSON output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.get_command(),
             capture_output=True,
             text=True,

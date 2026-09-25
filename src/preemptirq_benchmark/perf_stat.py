@@ -4,6 +4,8 @@ import shutil
 import subprocess
 import sys
 
+from preemptirq_benchmark.benchmarks import BENCH_ENV
+
 DEFAULT_EVENTS = [
     "cycles",
     "instructions",
@@ -66,7 +68,7 @@ def run_with_perf_stat(
         "--",
     ] + cmd
 
-    proc = subprocess.run(perf_cmd, capture_output=True, text=True)
+    proc = subprocess.run(perf_cmd, capture_output=True, text=True, env=BENCH_ENV)
     if proc.returncode != 0:
         print(
             f"Warning: perf stat wrapped command exited with code {proc.returncode}\n{proc.stderr.strip()}",

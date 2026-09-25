@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 from preemptirq_benchmark.cpu_isolation import (
     format_cpu_list,
     get_isolated_cpus,
@@ -74,7 +73,7 @@ class RtlaBenchmark(BenchmarkBase):
         """
         metrics: dict[str, float] = {}
 
-        tl = subprocess.run(
+        tl = run_command(
             self.get_command(),
             capture_output=True,
             text=True,
@@ -83,7 +82,7 @@ class RtlaBenchmark(BenchmarkBase):
         max_lat = parse_timerlat_max_from_output(tl.stdout)
         metrics["timerlat_max_us"] = max_lat
 
-        on = subprocess.run(
+        on = run_command(
             ["rtla", "osnoise", "top", "-d", self.duration, "-q", *self._cpu_args()],
             capture_output=True,
             text=True,

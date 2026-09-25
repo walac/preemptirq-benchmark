@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 
 
 @register
@@ -37,7 +36,7 @@ class PerfBenchBenchmark(BenchmarkBase):
         """
         metrics: dict[str, float] = {}
 
-        pipe = subprocess.run(
+        pipe = run_command(
             ["perf", "bench", "sched", "pipe"],
             capture_output=True,
             text=True,
@@ -56,7 +55,7 @@ class PerfBenchBenchmark(BenchmarkBase):
         if usec_match:
             metrics["pipe_usecs_per_op"] = float(usec_match.group(1))
 
-        msg = subprocess.run(
+        msg = run_command(
             self.get_command(),
             capture_output=True,
             text=True,

@@ -3,11 +3,10 @@ from __future__ import annotations
 import json
 import os
 import shutil
-import subprocess
 import tempfile
 from pathlib import Path
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 from preemptirq_benchmark.cpu_isolation import format_cpu_list, get_isolated_cpus
 
 
@@ -103,7 +102,7 @@ class CyclictestBenchmark(BenchmarkBase):
             json_path = tmp.name
 
         try:
-            subprocess.run(
+            run_command(
                 self._base_command() + [f"--json={json_path}"],
                 capture_output=True,
                 text=True,

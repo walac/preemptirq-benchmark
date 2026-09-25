@@ -3,9 +3,8 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 
 
 @register
@@ -35,7 +34,7 @@ class StressNgBenchmark(BenchmarkBase):
         Raises:
             RuntimeError: If the output cannot be parsed.
         """
-        proc = subprocess.run(
+        proc = run_command(
             self.get_command(),
             capture_output=True,
             text=True,

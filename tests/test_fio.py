@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import preemptirq_benchmark.benchmarks as benchmarks_module
 import preemptirq_benchmark.benchmarks.fio as fio_module
 from preemptirq_benchmark.benchmarks.fio import FioBenchmark
 
@@ -32,7 +33,7 @@ class TestFioWorkingSet:
         monkeypatch.setattr(fio_module.shutil, "which", lambda name: "/usr/bin/fio")
         monkeypatch.setattr(fio_module, "NULLB_DEV", SimpleNamespace(exists=device_exists))
         monkeypatch.setattr(fio_module, "IRQMODE_PARAM", SimpleNamespace(read_text=lambda: "1\n"))
-        monkeypatch.setattr(fio_module.subprocess, "run", run_modprobe)
+        monkeypatch.setattr(benchmarks_module.subprocess, "run", run_modprobe)
 
         ready, _ = FioBenchmark().check_prerequisites()
 

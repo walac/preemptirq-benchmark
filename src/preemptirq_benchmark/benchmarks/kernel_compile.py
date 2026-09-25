@@ -3,11 +3,10 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import subprocess
 import time
 from pathlib import Path
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 
 
 @register
@@ -78,7 +77,7 @@ class KernelCompileBenchmark(BenchmarkBase):
         self.run_make("clean")
 
         start = time.monotonic()
-        proc = subprocess.run(
+        proc = run_command(
             self._build_command(),
             capture_output=True,
             text=True,
@@ -118,7 +117,7 @@ class KernelCompileBenchmark(BenchmarkBase):
         Raises:
             RuntimeError: If the make command fails.
         """
-        proc = subprocess.run(
+        proc = run_command(
             ["make", "-C", str(self.kernel_src), target],
             capture_output=True,
             text=True,

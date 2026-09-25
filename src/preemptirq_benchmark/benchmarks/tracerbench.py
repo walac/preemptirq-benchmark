@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import subprocess
 from pathlib import Path
 
-from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.benchmarks import BenchmarkBase, register, run_command
 
 DEBUGFS_BASE = Path("/sys/kernel/debug/tracerbench")
 
@@ -62,7 +61,7 @@ class TracerbenchBenchmark(BenchmarkBase):
         if DEBUGFS_BASE.is_dir():
             return True, ""
 
-        result = subprocess.run(
+        result = run_command(
             ["modprobe", "tracerbench"],
             capture_output=True,
             text=True,

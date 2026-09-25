@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -8,6 +10,13 @@ from typing import Any, TypeVar
 ALL_BENCHMARK_NAMES: list[str] = []
 
 BENCHMARK_DESCRIPTIONS: dict[str, str] = {}
+
+BENCH_ENV = {**os.environ, "LC_ALL": "C", "LANG": "C"}
+
+
+def run_command(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Run a benchmark child process in the C locale."""
+    return subprocess.run(command, env=BENCH_ENV, **kwargs)
 
 
 @dataclass
