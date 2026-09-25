@@ -8,6 +8,14 @@ import subprocess
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 
 
+def _final_summary(output: str) -> str:
+    """Return the last complete bench summary line, excluding progress output."""
+    summaries = [line for line in output.splitlines() if line.startswith("Summary:")]
+    if not summaries:
+        raise RuntimeError(f"cannot parse bench output: {output}")
+    return summaries[-1]
+
+
 class BpfBenchBase(BenchmarkBase):
     """Base class for benchmarks that wrap the BPF selftests bench tool.
 
@@ -318,7 +326,9 @@ class BpfLocalStorageCreateBenchmark(BpfBenchBase):
             text=True,
             check=True,
         )
-        match = re.search(r"creates\s+([\d.]+)\s*[±+-]*\s*[\d.]*\s*k/s", proc.stdout)
+        match = re.search(
+            r"creates\s+([\d.]+)\s*[±+-]*\s*[\d.]*\s*k/s", _final_summary(proc.stdout)
+        )
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"creates_k_per_sec": float(match.group(1))}
@@ -356,7 +366,9 @@ class BpfHtabMemBenchmark(BpfBenchBase):
             text=True,
             check=True,
         )
-        match = re.search(r"per-prod-op\s+([\d.]+)\s*[±+-]*\s*[\d.]*\s*k/s", proc.stdout)
+        match = re.search(
+            r"per-prod-op\s+([\d.]+)\s*[±+-]*\s*[\d.]*\s*k/s", _final_summary(proc.stdout)
+        )
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"ops_k_per_sec": float(match.group(1))}

@@ -5,7 +5,47 @@ from types import SimpleNamespace
 
 import pytest
 
-from preemptirq_benchmark.benchmarks.bpf_bench import BpfLpmTrieLookupBenchmark
+from preemptirq_benchmark.benchmarks.bpf_bench import (
+    BpfHtabMemBenchmark,
+    BpfLocalStorageCreateBenchmark,
+    BpfLpmTrieLookupBenchmark,
+)
+
+
+@pytest.mark.parametrize(
+    ("benchmark_type", "rate_text", "metric"),
+    [
+        (BpfLocalStorageCreateBenchmark, "creates", "creates_k_per_sec"),
+        (BpfHtabMemBenchmark, "per-prod-op", "ops_k_per_sec"),
+    ],
+)
+class TestAllocationSummaryParsing:
+    def test_uses_final_summary_after_progress(
+        self, monkeypatch, benchmark_type, rate_text, metric
+    ):
+        stdout = (
+            f"Iter 0: {rate_text} 12.0 ± 1.0 k/s\n"
+            f"Summary: {rate_text} 40.0 ± 1.0 k/s\n"
+            f"Summary: {rate_text} 50.0 ± 1.0 k/s\n"
+        )
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda cmd, **kwargs: SimpleNamespace(stdout=stdout, stderr="", returncode=0),
+        )
+
+        assert benchmark_type().run_once()[metric] == 50.0
+
+    def test_rejects_progress_without_summary(self, monkeypatch, benchmark_type, rate_text, metric):
+        stdout = f"Iter 0: {rate_text} 12.0 ± 1.0 k/s\n"
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda cmd, **kwargs: SimpleNamespace(stdout=stdout, stderr="", returncode=0),
+        )
+
+        with pytest.raises(RuntimeError, match="cannot parse bench output"):
+            benchmark_type().run_once()
 
 
 class TestLpmTrieLookupParsing:
