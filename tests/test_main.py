@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -276,7 +277,116 @@ class _FakeBenchmarkGetCommandFails(BenchmarkBase):
         self.cleanup_called = True
 
 
+class _FakeBenchmarkRunFails(BenchmarkBase):
+    name = "fake_run_fails"
+    default_iterations = 1
+    supports_perf_stat = False
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def run_once(self) -> dict[str, float]:
+        raise subprocess.CalledProcessError(
+            1, ["fake-benchmark"], stderr="scheduler policy denied\n"
+        )
+
+    def get_units(self) -> dict[str, str]:
+        return {}
+
+
+class _FakeBenchmarkPerfFails(BenchmarkBase):
+    name = "fake_perf_fails"
+    default_iterations = 1
+    supports_perf_stat = True
+
+    def check_prerequisites(self) -> tuple[bool, str]:
+        return True, ""
+
+    def run_once(self) -> dict[str, float]:
+        return {"metric": 1.0}
+
+    def get_command(self) -> list[str]:
+        return ["fake-benchmark"]
+
+    def get_units(self) -> dict[str, str]:
+        return {"metric": "unit"}
+
+
 class TestCmdRun:
+    @pytest.mark.parametrize(
+        (
+            "benchmark_type",
+            "use_perf",
+            "expected_prefix",
+            "expected_detail",
+            "error_command",
+        ),
+        [
+            (
+                _FakeBenchmarkRunFails,
+                False,
+                "Iteration 1 of fake_run_fails",
+                "scheduler policy denied",
+                ["fake-benchmark"],
+            ),
+            (
+                _FakeBenchmarkPerfFails,
+                True,
+                "perf stat for iteration 1 of fake_perf_fails",
+                "perf denied",
+                ["perf", "stat"],
+            ),
+        ],
+    )
+    def test_called_process_error_includes_captured_stderr(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+        benchmark_type,
+        use_perf,
+        expected_prefix,
+        expected_detail,
+        error_command,
+    ):
+        bench = benchmark_type()
+
+        monkeypatch.setattr(main_module, "import_all", lambda: None)
+        monkeypatch.setattr(main_module, "resolve_benchmarks", lambda *a, **k: [bench.name])
+        monkeypatch.setattr(main_module, "get_benchmark", lambda name: bench)
+        monkeypatch.setattr(main_module, "perf_available", lambda: True)
+        monkeypatch.setattr(
+            main_module,
+            "run_with_perf_stat",
+            lambda *a, **k: (_ for _ in ()).throw(
+                subprocess.CalledProcessError(1, error_command, stderr="perf denied\n")
+            ),
+        )
+
+        args = argparse.Namespace(
+            include=None,
+            exclude=None,
+            all_flag=False,
+            kernel_src=None,
+            bpf_bench=None,
+            samples=None,
+            highest=None,
+            percentile=None,
+            perf_stat=use_perf,
+            perf_stat_events=None,
+            iterations=None,
+            duration=None,
+            isolated_cpus_only=False,
+            confidence_interval=95.0,
+            output=str(tmp_path / "report.json"),
+        )
+
+        cmd_run(args)
+
+        stderr = capsys.readouterr().err
+        assert f"{expected_prefix} failed (exit 1)" in stderr
+        assert expected_detail in stderr
+
     def test_setup_failure_in_one_benchmark_does_not_abort_others(self, monkeypatch, tmp_path):
         # Regression test: bench.setup() used to be called outside any
         # try/except, and the standalone bench.get_command() call (for

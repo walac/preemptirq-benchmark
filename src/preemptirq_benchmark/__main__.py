@@ -350,7 +350,14 @@ def cmd_run(args: argparse.Namespace) -> None:
             for i in range(iters):
                 try:
                     metrics = bench.run_once()
-                except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+                except subprocess.CalledProcessError as e:
+                    detail = (e.stderr or e.stdout or "").strip()[:500]
+                    print(
+                        f"\nWarning: Iteration {i+1} of {bench.name} failed "
+                        f"(exit {e.returncode}): {detail}",
+                        file=sys.stderr,
+                    )
+                except (RuntimeError, OSError) as e:
                     print(
                         f"\nWarning: Iteration {i+1} of {bench.name} failed: {e}",
                         file=sys.stderr,
@@ -367,7 +374,14 @@ def cmd_run(args: argparse.Namespace) -> None:
                                 _, counters = run_with_perf_stat(cmd, events=perf_events)
                                 for cname, cval in counters.items():
                                     result.perf_counters.setdefault(cname, []).append(cval)
-                    except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+                    except subprocess.CalledProcessError as e:
+                        detail = (e.stderr or e.stdout or "").strip()[:500]
+                        print(
+                            f"\nWarning: perf stat for iteration {i+1} of {bench.name} failed "
+                            f"(exit {e.returncode}): {detail}",
+                            file=sys.stderr,
+                        )
+                    except (RuntimeError, OSError) as e:
                         print(
                             f"\nWarning: perf stat for iteration {i+1} of {bench.name} failed: {e}",
                             file=sys.stderr,
@@ -377,7 +391,13 @@ def cmd_run(args: argparse.Namespace) -> None:
 
             if result.iterations > 0:
                 result.config = bench.get_workload_config()
-        except (subprocess.CalledProcessError, RuntimeError, OSError) as e:
+        except subprocess.CalledProcessError as e:
+            detail = (e.stderr or e.stdout or "").strip()[:500]
+            print(
+                f"\nWarning: {bench.name} failed (exit {e.returncode}): {detail}",
+                file=sys.stderr,
+            )
+        except (RuntimeError, OSError) as e:
             print(f"\nWarning: {bench.name} failed: {e}", file=sys.stderr)
         finally:
             bench.cleanup()
