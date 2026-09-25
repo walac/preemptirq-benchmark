@@ -8,6 +8,7 @@ from pathlib import Path
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
 
 NULLB_DEV = Path("/dev/nullb0")
+IRQMODE_PARAM = Path("/sys/module/null_blk/parameters/irqmode")
 
 
 @register
@@ -27,23 +28,33 @@ class FioBenchmark(BenchmarkBase):
         if not shutil.which("fio"):
             return False, "fio not found (install: dnf install fio)"
 
-        if NULLB_DEV.exists():
+        if not NULLB_DEV.exists():
+            result = subprocess.run(
+                ["modprobe", "null_blk", "irqmode=1", "gb=4"],
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0 or not NULLB_DEV.exists():
+                return False, (
+                    "/dev/nullb0 not available: "
+                    f"({result.stderr.strip()}). "
+                    "Load manually: modprobe null_blk irqmode=1 gb=4"
+                )
+
+        try:
+            mode = IRQMODE_PARAM.read_text().strip()
+        except OSError:
             return True, ""
 
-        result = subprocess.run(
-            ["modprobe", "null_blk", "irqmode=1", "gb=4"],
-            capture_output=True,
-            text=True,
-        )
+        if mode != "1":
+            return False, (
+                f"null_blk is loaded with irqmode={mode}, but this benchmark "
+                "requires irqmode=1 (timer completions) to generate IRQ load. "
+                "Fix: rmmod null_blk && modprobe null_blk irqmode=1 gb=4"
+            )
 
-        if result.returncode == 0 and NULLB_DEV.exists():
-            return True, ""
-
-        return False, (
-            "/dev/nullb0 not available: "
-            f"({result.stderr.strip()}). "
-            "Load manually: modprobe null_blk irqmode=1 gb=4"
-        )
+        return True, ""
 
     def run_once(self) -> dict[str, float]:
         """Run a single fio iteration with JSON output.

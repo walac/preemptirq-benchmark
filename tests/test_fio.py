@@ -31,8 +31,26 @@ class TestFioWorkingSet:
 
         monkeypatch.setattr(fio_module.shutil, "which", lambda name: "/usr/bin/fio")
         monkeypatch.setattr(fio_module, "NULLB_DEV", SimpleNamespace(exists=device_exists))
+        monkeypatch.setattr(fio_module, "IRQMODE_PARAM", SimpleNamespace(read_text=lambda: "1\n"))
         monkeypatch.setattr(fio_module.subprocess, "run", run_modprobe)
 
         ready, _ = FioBenchmark().check_prerequisites()
 
         assert ready is True
+
+
+class TestFioIrqmode:
+    def test_prerequisites_reject_an_existing_device_with_irqmode_zero(self, monkeypatch):
+        monkeypatch.setattr(fio_module.shutil, "which", lambda name: "/usr/bin/fio")
+        monkeypatch.setattr(fio_module, "NULLB_DEV", SimpleNamespace(exists=lambda: True))
+        monkeypatch.setattr(
+            fio_module,
+            "IRQMODE_PARAM",
+            SimpleNamespace(read_text=lambda: "0\n"),
+            raising=False,
+        )
+
+        ready, message = FioBenchmark().check_prerequisites()
+
+        assert ready is False
+        assert "irqmode=1" in message
