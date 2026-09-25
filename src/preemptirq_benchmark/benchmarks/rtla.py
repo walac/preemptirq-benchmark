@@ -127,12 +127,15 @@ def parse_timerlat_max_from_output(output: str) -> float:
     """
     for line in output.splitlines():
         if line.startswith("ALL"):
-            parts = line.split("|")
-            if len(parts) >= 3:
-                irq_stats = parts[1].split()
-                thread_stats = parts[2].split()
-                if len(irq_stats) >= 3 and len(thread_stats) >= 3:
-                    return max(float(irq_stats[2]), float(thread_stats[2]))
+            blocks = [part.split() for part in line.split("|")[1:] if part.strip()]
+            if len(blocks) < 2:
+                break
+            try:
+                maxima = [float(stats[2]) for stats in blocks if stats[2] != "-"]
+            except (IndexError, ValueError) as e:
+                raise RuntimeError("could not parse timerlat max latency from output") from e
+            if maxima:
+                return max(maxima)
     raise RuntimeError("could not parse timerlat max latency from output")
 
 

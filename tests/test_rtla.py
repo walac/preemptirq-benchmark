@@ -3,12 +3,35 @@ from __future__ import annotations
 import subprocess
 from types import SimpleNamespace
 
+import pytest
+
 import preemptirq_benchmark.benchmarks.rtla as rtla_module
-from preemptirq_benchmark.benchmarks.rtla import RtlaBenchmark
+from preemptirq_benchmark.benchmarks.rtla import RtlaBenchmark, parse_timerlat_max_from_output
 
 TIMERLAT_OUTPUT = "ALL       | 1  2  10.5   | 1  2  8.3   |\n"
 
 OSNOISE_OUTPUT = "0     1000  2000  3    0.05  6  6.5\n"
+
+
+class TestTimerlatSummaryParsing:
+    def test_includes_userspace_return_latency(self):
+        output = (
+            "CPU COUNT | IRQ Timer Latency | Thread Timer Latency | Ret user Timer Latency\n"
+            "ALL #10 e0 | 1 2 10 | 2 3 20 | 4 5 100\n"
+        )
+
+        assert parse_timerlat_max_from_output(output) == 100.0
+
+    def test_skips_unavailable_userspace_return_latency(self):
+        output = "ALL #10 e0 | 1 2 10 | 2 3 20 | - - -\n"
+
+        assert parse_timerlat_max_from_output(output) == 20.0
+
+    def test_rejects_incomplete_userspace_block(self):
+        output = "ALL #10 e0 | 1 2 10 | 2 3 20 | 4 5\n"
+
+        with pytest.raises(RuntimeError, match="could not parse timerlat"):
+            parse_timerlat_max_from_output(output)
 
 
 class TestGetCommand:
