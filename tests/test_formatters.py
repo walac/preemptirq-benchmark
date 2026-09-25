@@ -65,13 +65,18 @@ class TestAutoStyleCell:
         text = auto_style_cell("+5.2% (ns)")
         assert text.style == "dim"
 
-    def test_improvement_negative_pct(self):
+    def test_negative_pct_without_significance_is_unstyled(self):
+        # [BUG-ST-02] Sign alone does not indicate improvement: a metric
+        # could be lower-is-better or higher-is-better, and the formatter
+        # has no polarity information to decide which.
         text = auto_style_cell("-3.1%")
-        assert text.style == "green"
+        assert text.style == ""
 
-    def test_regression_positive_pct_only(self):
+    def test_positive_pct_without_significance_is_unstyled(self):
+        # [BUG-ST-02] Sign alone does not indicate regression, for the
+        # same reason: "+" is not necessarily worse (e.g. throughput).
         text = auto_style_cell("+3.1%")
-        assert text.style == "red"
+        assert text.style == ""
 
     def test_marginal_significance(self):
         text = auto_style_cell("+2.0% (*)")

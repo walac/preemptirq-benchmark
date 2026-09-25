@@ -73,9 +73,11 @@ def format_ascii(
 ) -> str:
     """Render a rich box-drawing table with automatic color coding.
 
-    Cells containing percentage deltas are colored green (improvement)
-    or red (regression).  Significance markers (ns), (*), (**) are
-    styled accordingly.
+    Significance markers (ns), (*), (**) are styled accordingly.
+    Percentage deltas are not colored by sign: a metric's sign does
+    not indicate improvement or regression without knowing whether
+    higher or lower is better for that metric, so coloring by sign
+    alone would be wrong for throughput-style metrics.
 
     Args:
         title: Table title displayed above the table.
@@ -116,10 +118,12 @@ def auto_style_cell(cell: str) -> Text:
 
     Returns:
         A rich Text object with the appropriate style applied:
-        red for regression (+N.N%), green for improvement (-N.N%),
         dim for not significant (ns) or unavailable tests,
         yellow for p < 0.05 (*),
-        bold yellow for p < 0.01 (**).
+        bold yellow for p < 0.01 (**),
+        unstyled otherwise. Percentage deltas are not colored by sign:
+        without knowing a metric's polarity (higher- vs lower-is-better),
+        sign-based coloring would be wrong for throughput-style metrics.
     """
     stripped = cell.strip()
     if stripped.endswith(("(ns)", "(insufficient samples)", "(unavailable)")):
@@ -128,10 +132,6 @@ def auto_style_cell(cell: str) -> Text:
         return Text(cell, style="bold yellow")
     if stripped.endswith("(*)"):
         return Text(cell, style="yellow")
-    if stripped.startswith("+") and "%" in stripped:
-        return Text(cell, style="red")
-    if stripped.startswith("-") and "%" in stripped:
-        return Text(cell, style="green")
     return Text(cell)
 
 
