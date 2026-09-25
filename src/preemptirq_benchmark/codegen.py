@@ -528,7 +528,7 @@ def build_comparison(
     n = len(per_call_vals)
     p25 = median = p75 = p95 = 0.0
     if n >= 2:
-        q = statistics.quantiles(per_call_vals, n=20)
+        q = statistics.quantiles(per_call_vals, n=20, method="inclusive")
         p25, median, p75, p95 = q[4], q[9], q[14], q[18]
     elif n == 1:
         p25 = median = p75 = p95 = per_call_vals[0]

@@ -422,6 +422,27 @@ class TestBuildComparisonTotalsExcludeSuspects:
         assert summary.dist_min == summary.dist_max == pytest.approx(5.0)
 
 
+class TestBuildComparisonDistribution:
+    def test_quantiles_remain_within_two_observed_values(self):
+        target_data = {
+            "one_instruction": FuncTrace(insn_count=101, calls={"trace_x": 1}),
+            "five_instructions": FuncTrace(insn_count=105, calls={"trace_x": 1}),
+        }
+        base_data = {
+            "one_instruction": FuncTrace(insn_count=100),
+            "five_instructions": FuncTrace(insn_count=100),
+        }
+
+        _, summary = build_comparison(target_data, base_data)
+
+        assert summary.dist_min == 1.0
+        assert summary.dist_max == 5.0
+        assert summary.dist_p25 == pytest.approx(2.0)
+        assert summary.dist_median == pytest.approx(3.0)
+        assert summary.dist_p75 == pytest.approx(4.0)
+        assert summary.dist_p95 == pytest.approx(4.8)
+
+
 class TestEmptyResultReasons:
     # Regression tests: build_comparison() can return zero rows for
     # reasons that have nothing to do with inlining filtering (e.g. no
