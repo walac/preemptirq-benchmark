@@ -51,8 +51,9 @@ TRACE_HELPERS = {
 # [^>]+ captures any character except '>', so it handles all symbol names
 # including those with underscores, dots (.cold, .isra.0), or other
 # compiler-generated suffixes. The trailing ':$' anchors to end-of-line
-# to avoid matching symbolic references within instruction operands.
-FUNC_RE = re.compile(r"^[0-9a-f]+ <([^>]+)>:$")
+# to avoid matching symbolic references within instruction operands. The
+# address is captured too, to find every symbol-table alias for the body.
+FUNC_RE = re.compile(r"^([0-9a-f]+) <([^>]+)>:$")
 
 # INSN_RE — matches address-prefixed disassembly lines (as opposed to
 # blank lines, section headers, or source annotations). Byte-only
@@ -187,6 +188,7 @@ class FuncTrace:
 
     insn_count: int = 0
     calls: dict[str, int] = field(default_factory=lambda: defaultdict(int))
+    aliases: frozenset[str] = field(default_factory=frozenset)
 
     @property
     def total_calls(self) -> int:
@@ -291,6 +293,21 @@ def stream_objdump(
         raise RuntimeError(f"objdump failed on {vmlinux} (exit {proc.returncode})")
 
 
+def _function_aliases(vmlinux: str, cross_compile: str = "") -> dict[int, frozenset[str]]:
+    """Return function symbol names grouped by their ELF address."""
+    aliases: defaultdict[int, set[str]] = defaultdict(set)
+    for line in stream_objdump(vmlinux, cross_compile, ["-t"]):
+        fields = line.split()
+        if len(fields) < 6 or fields[2] != "F":
+            continue
+        try:
+            address = int(fields[0], 16)
+        except ValueError:
+            continue
+        aliases[address].add(fields[-1])
+    return {address: frozenset(names) for address, names in aliases.items()}
+
+
 def extract_function_data(
     vmlinux: str,
     progress: Progress,
@@ -331,9 +348,11 @@ def extract_function_data(
         colliding instances happens to have a trace-helper call.
     """
     result: dict[str, FuncTrace] = {}
+    aliases_by_address = _function_aliases(vmlinux, cross_compile)
     seen_names: set[str] = set()
     ambiguous_names: set[str] = set()
     current_func: str | None = None
+    current_aliases: frozenset[str] = frozenset()
     current_data = FuncTrace()
     trailing_nops = 0
     trailing_int3 = 0
@@ -343,6 +362,7 @@ def extract_function_data(
         current_data.insn_count -= max(0, trailing_int3 - 1)
         if not current_func or current_data.insn_count <= 0:
             return
+        current_data.aliases = current_aliases
         if current_func in seen_names:
             ambiguous_names.add(current_func)
             result.pop(current_func, None)
@@ -355,7 +375,11 @@ def extract_function_data(
         m = FUNC_RE.match(line)
         if m:
             save_current()
-            current_func = m.group(1)
+            name = m.group(2)
+            current_func = name
+            current_aliases = aliases_by_address.get(int(m.group(1), 16), frozenset()) | frozenset(
+                {name}
+            )
             current_data = FuncTrace()
             trailing_nops = 0
             trailing_int3 = 0
@@ -401,6 +425,21 @@ def extract_function_data(
     return result, len(ambiguous_names)
 
 
+def _aggregate_function_data(data: dict[str, FuncTrace]) -> dict[tuple[str, ...], FuncTrace]:
+    """Group compiler clones and ELF aliases under canonical symbol names."""
+    aggregated: dict[tuple[str, ...], FuncTrace] = {}
+    for name, trace in data.items():
+        aliases = trace.aliases or frozenset({name})
+        canonical_names = tuple(sorted({_canonical_symbol(alias) for alias in aliases}))
+        aggregate = aggregated.setdefault(
+            canonical_names, FuncTrace(aliases=frozenset(canonical_names))
+        )
+        aggregate.insn_count += trace.insn_count
+        for helper, calls in trace.calls.items():
+            aggregate.calls[helper] += calls
+    return aggregated
+
+
 def build_comparison(
     target_data: dict[str, FuncTrace],
     base_data: dict[str, FuncTrace],
@@ -443,13 +482,16 @@ def build_comparison(
     skipped_inlining = 0
     flagged_inlining = 0
 
-    for name in sorted(target_data):
-        td = target_data[name]
-        if name not in base_data:
+    target_functions = _aggregate_function_data(target_data)
+    base_functions = _aggregate_function_data(base_data)
+
+    for names in sorted(target_functions):
+        td = target_functions[names]
+        if names not in base_functions:
             skipped_missing += 1
             continue
 
-        base = base_data[name].insn_count
+        base = base_functions[names].insn_count
         target = td.insn_count
         diff = target - base
 
@@ -473,7 +515,9 @@ def build_comparison(
             flagged_inlining += 1
 
         apc = diff / tc if tc > 0 else 0.0
-        rows.append(CompareRow(name, base, target, diff, pct, tc, apc, td.breakdown(), suspect))
+        rows.append(
+            CompareRow(", ".join(names), base, target, diff, pct, tc, apc, td.breakdown(), suspect)
+        )
 
     non_suspect_rows = [r for r in rows if not r.inlining_suspect]
     total_base = sum(r.base_insns for r in non_suspect_rows)

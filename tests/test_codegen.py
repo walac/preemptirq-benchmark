@@ -15,8 +15,9 @@ from preemptirq_benchmark.codegen import (
 )
 
 
-def _extract(monkeypatch, lines, track_trace_calls=False):
+def _extract(monkeypatch, lines, track_trace_calls=False, aliases=None):
     monkeypatch.setattr(codegen, "stream_objdump", lambda *a, **kw: iter(lines))
+    monkeypatch.setattr(codegen, "_function_aliases", lambda *a, **kw: aliases or {})
     return extract_function_data(
         "fake.vmlinux", MagicMock(), MagicMock(), track_trace_calls=track_trace_calls
     )
@@ -304,6 +305,72 @@ class TestBuildComparisonAmbiguousSummary:
         _, summary = build_comparison({}, {})
         assert summary.functions_ambiguous_target == 0
         assert summary.functions_ambiguous_base == 0
+
+
+class TestCanonicalFunctionNames:
+    def test_suffix_changed_clones_are_joined_and_aggregated(self):
+        # Tracepoint inlining can renumber or split a function into different
+        # compiler clones between builds. Compare their common source-level
+        # function as one unit rather than dropping every mismatched clone.
+        target_data = {
+            "worker.isra.1": FuncTrace(insn_count=12, calls={"trace_x": 1}),
+            "worker.constprop.0": FuncTrace(insn_count=13, calls={"trace_x": 1}),
+        }
+        base_data = {"worker.isra.0": FuncTrace(insn_count=20)}
+
+        rows, summary = build_comparison(target_data, base_data)
+
+        assert [(row.name, row.base_insns, row.target_insns, row.total_calls) for row in rows] == [
+            ("worker", 20, 25, 2)
+        ]
+        assert summary.functions_skipped_missing == 0
+
+    def test_address_aliases_join_despite_different_objdump_headers(self, monkeypatch):
+        # Objdump selects one name per address. Keep the full symbol-table
+        # alias set so a different selection in each build still joins.
+        aliases = {0: frozenset({"alias_f", "real_f"})}
+        target, _ = _extract(
+            monkeypatch,
+            [
+                "0000000000000000 <alias_f>:",
+                "   0:\tcall   0000000000000002 <trace_local_irq_restore>",
+                "   1:\tret",
+            ],
+            track_trace_calls=True,
+            aliases=aliases,
+        )
+        base, _ = _extract(
+            monkeypatch,
+            [
+                "0000000000000000 <real_f>:",
+                "   0:\tret",
+            ],
+            aliases=aliases,
+        )
+
+        rows, summary = build_comparison(target, base)
+
+        assert [(row.name, row.base_insns, row.target_insns) for row in rows] == [
+            ("alias_f, real_f", 1, 2)
+        ]
+        assert summary.functions_skipped_missing == 0
+
+    def test_function_aliases_are_collected_by_address(self, monkeypatch):
+        monkeypatch.setattr(
+            codegen,
+            "stream_objdump",
+            lambda *a, **kw: iter(
+                [
+                    "0000000000400460 g     F .text\t0000000000000004              alias_f",
+                    "0000000000400460 g     F .text\t0000000000000004              real_f",
+                    "0000000000400470 g     O .data\t0000000000000004              data_f",
+                ]
+            ),
+        )
+
+        assert codegen._function_aliases("fake.vmlinux") == {
+            0x400460: frozenset({"alias_f", "real_f"})
+        }
 
 
 class TestBuildComparisonTotalsExcludeSuspects:
