@@ -6,6 +6,7 @@ import shutil
 import subprocess
 
 from preemptirq_benchmark.benchmarks import BenchmarkBase, register
+from preemptirq_benchmark.cpu_isolation import format_cpu_list
 
 
 def _final_summary(output: str) -> str:
@@ -180,14 +181,26 @@ class BpfLocalStorageBenchmark(BpfBenchBase):
         return {"throughput_m_ops_per_sec": "M ops/s"}
 
 
+class BpfHashmapBase(BpfBenchBase):
+    """Pin hashmap producers to CPUs allowed for this process."""
+
+    def bench_cmd(self) -> list[str]:
+        cpus = sorted(os.sched_getaffinity(0))
+        if not cpus:
+            raise RuntimeError("no CPUs available for BPF hashmap producers")
+        self.producers = max(1, len(cpus) - 1)
+        cmd = super().bench_cmd()
+        cmd.insert(-1, f"--prod-affinity={format_cpu_list(cpus)}")
+        return cmd
+
+
 @register
-class BpfHashmapBenchmark(BpfBenchBase):
+class BpfHashmapBenchmark(BpfHashmapBase):
     """BPF hashmap full update benchmark (exercises spin lock)."""
 
     name = "bpf-hashmap"
     description = "BPF hashmap update (spin lock)"
     bench_name = "bpf-hashmap-full-update"
-    producers = max(1, (os.cpu_count() or 1) - 1)
 
     def run_once(self) -> dict[str, float]:
         """Run a single hashmap bench iteration.
@@ -252,7 +265,7 @@ class BpfSyscallCountBenchmark(BpfBenchBase):
 
 
 @register
-class BpfHashmapLookupBenchmark(BpfBenchBase):
+class BpfHashmapLookupBenchmark(BpfHashmapBase):
     """BPF hashmap lookup benchmark.
 
     Exercises the ``bpf_map_lookup_elem`` and ``bpf_map_update_elem``
@@ -264,7 +277,6 @@ class BpfHashmapLookupBenchmark(BpfBenchBase):
     name = "bpf-hashmap-lookup"
     description = "BPF hashmap lookup/update syscall"
     bench_name = "bpf-hashmap-lookup"
-    producers = max(1, (os.cpu_count() or 1) - 1)
 
     def run_once(self) -> dict[str, float]:
         """Run a single hashmap-lookup iteration.

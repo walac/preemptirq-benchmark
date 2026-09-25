@@ -1,15 +1,33 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from types import SimpleNamespace
 
 import pytest
 
 from preemptirq_benchmark.benchmarks.bpf_bench import (
+    BpfHashmapBenchmark,
+    BpfHashmapLookupBenchmark,
     BpfHtabMemBenchmark,
     BpfLocalStorageCreateBenchmark,
     BpfLpmTrieLookupBenchmark,
 )
+
+
+@pytest.mark.parametrize("benchmark_type", [BpfHashmapBenchmark, BpfHashmapLookupBenchmark])
+@pytest.mark.parametrize(
+    ("allowed_cpus", "producer_count", "affinity_arg"),
+    [({3, 5, 7}, 2, "--prod-affinity=3,5,7"), ({4}, 1, "--prod-affinity=4")],
+)
+def test_hashmap_producers_are_pinned_to_allowed_cpus(
+    monkeypatch, benchmark_type, allowed_cpus, producer_count, affinity_arg
+):
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: allowed_cpus)
+    command = benchmark_type().bench_cmd()
+
+    assert f"-p{producer_count}" in command
+    assert affinity_arg in command
 
 
 @pytest.mark.parametrize(
