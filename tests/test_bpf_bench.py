@@ -7,9 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from preemptirq_benchmark.benchmarks.bpf_bench import (
+    BpfFentryBenchmark,
     BpfHashmapBenchmark,
     BpfHashmapLookupBenchmark,
     BpfHtabMemBenchmark,
+    BpfLocalStorageBenchmark,
     BpfLocalStorageCreateBenchmark,
     BpfLpmTrieLookupBenchmark,
 )
@@ -64,6 +66,71 @@ class TestAllocationSummaryParsing:
 
         with pytest.raises(RuntimeError, match="cannot parse bench output"):
             benchmark_type().run_once()
+
+
+@pytest.mark.parametrize(
+    ("benchmark_type", "stdout", "expected"),
+    [
+        (
+            BpfFentryBenchmark,
+            "Summary: hits 10.0 M/s\nSummary: hits 20.0 M/s\n",
+            {"hits_m_per_sec": 20.0},
+        ),
+        (
+            BpfLocalStorageBenchmark,
+            "Summary: hits throughput 10.0 M ops/s\n" "Summary: hits throughput 20.0 M ops/s\n",
+            {"throughput_m_ops_per_sec": 20.0},
+        ),
+        (
+            BpfLpmTrieLookupBenchmark,
+            "Summary: throughput 10.0 ± 1.0 M ops/s, latency 100.0 ns/op\n"
+            "Summary: throughput 20.0 ± 1.0 M ops/s, latency 50.0 ns/op\n",
+            {"throughput_ops_per_sec": 20.0, "latency_per_op": 50.0},
+        ),
+    ],
+)
+def test_summary_parsers_use_final_summary(monkeypatch, benchmark_type, stdout, expected):
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, **kwargs: SimpleNamespace(stdout=stdout, stderr="", returncode=0),
+    )
+
+    assert benchmark_type().run_once() == expected
+
+
+def test_hashmap_parser_uses_final_summary_section(monkeypatch):
+    stdout = (
+        "Summary: warmup\n"
+        "0:hash_map_full_perf 10 events per sec\n"
+        "Summary: steady state\n"
+        "0:hash_map_full_perf 20 events per sec\n"
+        "1:hash_map_full_perf 30 events per sec\n"
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, **kwargs: SimpleNamespace(stdout=stdout, stderr="", returncode=0),
+    )
+
+    assert BpfHashmapBenchmark().run_once() == {"events_per_sec": 50.0}
+
+
+def test_hashmap_lookup_parser_uses_final_summary_section(monkeypatch):
+    stdout = (
+        "Summary: warmup\n"
+        "0: lookup 10.0M ± 1.0M events/sec\n"
+        "Summary: steady state\n"
+        "0: lookup 20.0M ± 1.0M events/sec\n"
+        "1: lookup 30.0M ± 1.0M events/sec\n"
+    )
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda cmd, **kwargs: SimpleNamespace(stdout=stdout, stderr="", returncode=0),
+    )
+
+    assert BpfHashmapLookupBenchmark().run_once() == {"lookup_m_events_per_sec": 50.0}
 
 
 class TestLpmTrieLookupParsing:

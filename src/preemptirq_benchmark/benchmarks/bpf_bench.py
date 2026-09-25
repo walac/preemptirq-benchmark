@@ -16,6 +16,15 @@ def _final_summary(output: str) -> str:
     return summaries[-1]
 
 
+def _final_summary_section(output: str) -> str:
+    """Return output beginning at the last bench Summary line."""
+    lines = output.splitlines()
+    for index in range(len(lines) - 1, -1, -1):
+        if lines[index].startswith("Summary:"):
+            return "\n".join(lines[index:])
+    raise RuntimeError(f"cannot parse bench output: {output}")
+
+
 class BpfBenchBase(BenchmarkBase):
     """Base class for benchmarks that wrap the BPF selftests bench tool.
 
@@ -96,7 +105,7 @@ class BpfBenchBase(BenchmarkBase):
             text=True,
             check=True,
         )
-        match = re.search(r"Summary:\s+hits\s+([\d.]+)\s*", proc.stdout)
+        match = re.search(r"Summary:\s+hits\s+([\d.]+)\s*", _final_summary(proc.stdout))
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"hits_m_per_sec": float(match.group(1))}
@@ -166,7 +175,7 @@ class BpfLocalStorageBenchmark(BpfBenchBase):
             text=True,
             check=True,
         )
-        match = re.search(r"hits throughput\s+([\d.]+)\s*", proc.stdout)
+        match = re.search(r"hits throughput\s+([\d.]+)\s*", _final_summary(proc.stdout))
         if not match:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
         return {"throughput_m_ops_per_sec": float(match.group(1))}
@@ -223,7 +232,9 @@ class BpfHashmapBenchmark(BpfHashmapBase):
             check=True,
         )
         total = 0.0
-        for match in re.finditer(r"hash_map_full_perf\s+(\d+)\s+events per sec", proc.stdout):
+        for match in re.finditer(
+            r"hash_map_full_perf\s+(\d+)\s+events per sec", _final_summary_section(proc.stdout)
+        ):
             total += float(match.group(1))
         if total == 0.0:
             raise RuntimeError(f"cannot parse bench output: {proc.stdout}")
@@ -296,7 +307,7 @@ class BpfHashmapLookupBenchmark(BpfHashmapBase):
         found = False
         for m in re.finditer(
             r"lookup\s+([\d.]+)M\s*(?:[±+-]*\s*[\d.]*M\s*)?events/sec",
-            proc.stdout,
+            _final_summary_section(proc.stdout),
         ):
             total += float(m.group(1))
             found = True
@@ -422,10 +433,11 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
             text=True,
             check=True,
         )
+        summary = _final_summary(proc.stdout)
         result: dict[str, float] = {}
         m = re.search(
             r"throughput\s+([\d.]+)\s*[±+-]*\s*[\d.]*\s*([A-Za-z])\s*ops/s",
-            proc.stdout,
+            summary,
         )
         if m:
             value = float(m.group(1))
@@ -439,7 +451,7 @@ class BpfLpmTrieLookupBenchmark(BpfBenchBase):
                     f"output={proc.stdout[-500:]!r}"
                 ) from e
             result["throughput_ops_per_sec"] = value * multiplier
-        m = re.search(r"latency\s+([\d.]+)\s*([a-z]+)/op", proc.stdout)
+        m = re.search(r"latency\s+([\d.]+)\s*([a-z]+)/op", summary)
         if m:
             latency_unit = m.group(2)
             # Convert to nanoseconds to match get_units()
