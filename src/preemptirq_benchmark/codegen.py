@@ -69,6 +69,18 @@ INSN_RE = re.compile(r"^\s*[0-9a-f]+:")
 # objdump line without a mnemonic. Such a line is not another instruction.
 RAW_BYTES_RE = re.compile(r"(?:[0-9a-fA-F]{2}\s*)+")
 
+# objdump may render a branch target as an offset into a helper or as a
+# compiler-generated clone. Strip those decorations before helper lookup.
+_SYM_SUFFIX_RE = re.compile(
+    r"(?:\+0x[0-9a-f]+)?(?:\.(?:cold|isra|constprop|part|localalias)(?:\.\d+)*)*$"
+)
+
+
+def _canonical_symbol(symbol: str) -> str:
+    """Return a trace-helper symbol without objdump/compiler decorations."""
+    return _SYM_SUFFIX_RE.sub("", symbol)
+
+
 # CALL_RE — matches call/branch-and-link instructions that target a
 # named symbol, across multiple architectures:
 #
@@ -381,8 +393,8 @@ def extract_function_data(
                 trailing_int3 = 0
             if track_trace_calls:
                 cm = CALL_RE.search(line)
-                if cm and cm.group(1) in TRACE_HELPERS:
-                    current_data.calls[cm.group(1)] += 1
+                if cm and (helper := _canonical_symbol(cm.group(1))) in TRACE_HELPERS:
+                    current_data.calls[helper] += 1
 
     save_current()
 

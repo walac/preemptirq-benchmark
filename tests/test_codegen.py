@@ -271,6 +271,26 @@ class TestTailCallDetection:
         result, _ = _extract(monkeypatch, lines, track_trace_calls=True)
         assert result["caller"].calls["trace_local_irq_restore"] == 1
 
+    @pytest.mark.parametrize(
+        ("symbol", "helper"),
+        [
+            ("trace_local_irq_restore+0x10", "trace_local_irq_restore"),
+            ("__trace_preempt_on.cold", "__trace_preempt_on"),
+            ("trace_local_irq_disable.isra.2", "trace_local_irq_disable"),
+        ],
+    )
+    def test_call_to_offset_or_cloned_trace_helper_is_counted(self, monkeypatch, symbol, helper):
+        # Calls may target an offset within a helper or a compiler-generated
+        # clone. Both spellings still represent calls to the canonical helper.
+        lines = [
+            "0000000000000000 <caller>:",
+            f"   0:\tcall   0000000000000002 <{symbol}>",
+        ]
+
+        result, _ = _extract(monkeypatch, lines, track_trace_calls=True)
+
+        assert result["caller"].calls[helper] == 1
+
 
 class TestBuildComparisonAmbiguousSummary:
     def test_ambiguous_counts_flow_into_summary(self):
