@@ -101,6 +101,22 @@ class TestPaddingStripping:
         result, _ = _extract(monkeypatch, lines)
         assert result["helper"].insn_count == 2
 
+    def test_llvm_objdump_layout_strips_padding(self, monkeypatch):
+        # [BUG-CG-01] llvm-objdump tabs between the mnemonic and its
+        # operands instead of between the address and the mnemonic, and
+        # pads the address field with spaces. rsplit("\t", 1)[-1] would
+        # capture "(%rax,%rax)" as the "mnemonic" here, which never matches
+        # NOP_RE, so the trailing nopw padding must still be stripped.
+        lines = [
+            "0000000000000000 <helper>:",
+            "   0:      \tpush\t%rbp",
+            "   1:      \tret",
+            "   2:      \tnopw\t(%rax,%rax)",
+            "   9:      \tnopw\t(%rax,%rax)",
+        ]
+        result, _ = _extract(monkeypatch, lines)
+        assert result["helper"].insn_count == 2
+
 
 class TestAmbiguousNameExclusion:
     def test_duplicate_name_excluded_from_result(self, monkeypatch):

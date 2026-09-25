@@ -355,13 +355,21 @@ def extract_function_data(
             if RAW_BYTES_RE.fullmatch(line[insn_match.end() :].strip()):
                 continue
             current_data.insn_count += 1
-            # rsplit handles both the default --no-show-raw-insn layout
-            # (one tab: "<addr>:\t<mnemonic>") and layouts that also show
-            # raw instruction bytes (two tabs: "<addr>:\t<bytes>\t<mnemonic>")
-            # — taking the field after the first tab would capture the raw
-            # bytes as part of the mnemonic in the latter case, which never
-            # matches NOP_RE and silently re-inflates the instruction count.
-            mnemonic = line.rsplit("\t", 1)[-1]
+            # Extract the mnemonic positionally rather than by rsplitting on
+            # tabs: GNU objdump tabs between the address and the mnemonic
+            # (optionally with a raw-bytes field in between), but
+            # llvm-objdump instead tabs between the mnemonic and its
+            # operands. rsplit("\t", 1)[-1] would then capture the operands
+            # under llvm, which never matches NOP_RE/INT3_RE and silently
+            # re-inflates the instruction count with alignment padding.
+            tail = line[insn_match.end() :]
+            fields = [f for f in tail.split("\t") if f.strip()]
+            mnemonic = ""
+            if fields:
+                first = fields[0].strip()
+                if len(fields) > 1 and RAW_BYTES_RE.fullmatch(first):
+                    first = fields[1].strip()
+                mnemonic = first
             if INT3_RE.match(mnemonic):
                 trailing_int3 += 1
                 trailing_nops = 0
