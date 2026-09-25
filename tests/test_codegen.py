@@ -23,6 +23,30 @@ def _extract(monkeypatch, lines, track_trace_calls=False):
 
 
 class TestPaddingStripping:
+    def test_raw_byte_continuation_is_not_an_instruction(self, monkeypatch):
+        lines = [
+            "0000000000000000 <helper>:",
+            "   0:\t48 b8 00 00 00 00 00 \tmovabs $0x0,%rax",
+            "   7:\t00 00 00",
+            "   a:\tc3                   \tret",
+        ]
+
+        result, _ = _extract(monkeypatch, lines)
+
+        assert result["helper"].insn_count == 2
+
+    def test_continuation_after_trailing_nop_does_not_reset_padding(self, monkeypatch):
+        lines = [
+            "0000000000000000 <helper>:",
+            "   0:\tc3                   \tret",
+            "   1:\t66 66 66 2e 0f 1f 84\tnopw 0x0(%rax,%rax,1)",
+            "   8:\t00 00 00 00 00",
+        ]
+
+        result, _ = _extract(monkeypatch, lines)
+
+        assert result["helper"].insn_count == 1
+
     def test_trailing_nop_stripped(self, monkeypatch):
         lines = [
             "0000000000000000 <helper>:",

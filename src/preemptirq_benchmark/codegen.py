@@ -54,8 +54,9 @@ TRACE_HELPERS = {
 # to avoid matching symbolic references within instruction operands.
 FUNC_RE = re.compile(r"^[0-9a-f]+ <([^>]+)>:$")
 
-# INSN_RE — matches instruction lines (as opposed to blank lines,
-# section headers, or source annotations):
+# INSN_RE — matches address-prefixed disassembly lines (as opposed to
+# blank lines, section headers, or source annotations). Byte-only
+# continuation lines are filtered separately below:
 #   ffffffff81f823a4:  call   ffffffff81390910 <__fentry__>
 #   ^^^^^^^^^^^^^^^^
 #   optional whitespace + hex address + colon
@@ -63,6 +64,10 @@ FUNC_RE = re.compile(r"^[0-9a-f]+ <([^>]+)>:$")
 # The \s* prefix handles both vmlinux (no indent) and relocatable
 # object files (indented addresses) across objdump versions.
 INSN_RE = re.compile(r"^\s*[0-9a-f]+:")
+
+# A long instruction's raw bytes can wrap onto another address-prefixed
+# objdump line without a mnemonic. Such a line is not another instruction.
+RAW_BYTES_RE = re.compile(r"(?:[0-9a-fA-F]{2}\s*)+")
 
 # CALL_RE — matches call/branch-and-link instructions that target a
 # named symbol, across multiple architectures:
@@ -345,7 +350,10 @@ def extract_function_data(
             progress.update(task, advance=1)
             continue
 
-        if current_func and INSN_RE.match(line):
+        insn_match = INSN_RE.match(line)
+        if current_func and insn_match:
+            if RAW_BYTES_RE.fullmatch(line[insn_match.end() :].strip()):
+                continue
             current_data.insn_count += 1
             # rsplit handles both the default --no-show-raw-insn layout
             # (one tab: "<addr>:\t<mnemonic>") and layouts that also show
